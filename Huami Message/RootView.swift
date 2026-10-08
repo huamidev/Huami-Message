@@ -40,9 +40,9 @@ struct RootView: View {
     ///
     /// 加好友是"维护关系"的动作，不是"看消息"的动作。
     /// 消息页应该只有"最近聊过的人"。
-    enum Tab { case messages, search, contacts, profile }
+    enum AppTab { case messages, search, contacts, profile }
 
-    @State private var selection: Tab = RootView.initialTab
+    @State private var selection: AppTab = RootView.initialTab
 
     /// 是否已经同意过服务条款。
     /// 用 AppStorage 存 —— 只问一次，之后不再打扰。
@@ -55,7 +55,7 @@ struct RootView: View {
     /// 启动时默认停在哪个页面。
     /// 开发时可以用启动参数直接跳过去（见 Support/DevFlags.swift），
     /// 平时正常启动就是「消息」页，不受影响。
-    static var initialTab: Tab {
+    static var initialTab: AppTab {
         switch DevFlags.startTab {
         case "profile":  .profile
         case "search":   .search
@@ -81,33 +81,36 @@ struct RootView: View {
         // 背景放在每个页面内部（见 Design/AppPage.swift 里的说明）——
         // 放在这里会被 TabView 自己的不透明背景盖住，一点都看不见。
         TabView(selection: $selection) {
-            ConversationListView()
-                .tabItem {
-                    Label("消息", systemImage: "bubble.left.and.bubble.right.fill")
-                }
-                .tag(Tab.messages)
+            Tab("消息", systemImage: "bubble.left.and.bubble.right.fill",
+                value: AppTab.messages) {
+                ConversationListView()
+            }
 
-            ContactsView()
-                .tabItem {
-                    Label("联系人", systemImage: "person.2.fill")
-                }
-                .tag(Tab.contacts)
+            Tab("联系人", systemImage: "person.2.fill",
+                value: AppTab.contacts) {
+                ContactsView()
+            }
 
-            ProfileView()
-                .tabItem {
-                    Label("我", systemImage: "person.crop.circle.fill")
-                }
-                .tag(Tab.profile)
+            Tab("我", systemImage: "person.crop.circle.fill",
+                value: AppTab.profile) {
+                ProfileView()
+            }
 
-            // ⚠️ 搜索放**最右边**（用户要求：和 Telegram 一样，
-            // 搜索单独拎出来、位置固定在右手边）。
-            // 这类"肌肉记忆"的位置一旦定了就别再动 ——
-            // 用户会闭着眼睛去点，位置变了就会误触。
-            SearchView()
-                .tabItem {
-                    Label("搜索", systemImage: "magnifyingglass")
-                }
-                .tag(Tab.search)
+            // ⚠️ 关键：`role: .search`
+            //
+            // 我第一版把搜索做成第 4 个普通页签，塞在那个胶囊里面 ——
+            // 那是错的。Telegram 的搜索是**胶囊右边一个独立的圆形按钮**。
+            //
+            // iOS 18 起，`Tab(role: .search)` 就是干这个的：
+            // 系统会把它单独渲染成一个圆钮，和其余页签分开
+            //（照片、音乐 App 也是这个样子）。
+            //
+            // 这件事教了我一条：**「和某个 App 一样」时，要看清它到底怎么摆的**，
+            // 而不是把功能凑齐就行。同样的四个功能，摆法不同，一眼就认得出不是它。
+            Tab("搜索", systemImage: "magnifyingglass",
+                value: AppTab.search, role: .search) {
+                SearchView()
+            }
         }
         .tint(Theme.accent)
         // 把数据管家交给下面所有页面
