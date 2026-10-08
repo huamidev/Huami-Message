@@ -257,9 +257,17 @@ struct ChatInputBar: View {
                     //    从建 Task 到 start 真正跑起来之间的那几次 onChanged
                     //    会各自再启动一次录音，几次会话激活互相排队 ——
                     //    实测就是一两秒的延迟。
-                    if recorder.begin() {
+                    if recorder.claimStart() {
                         AppLog.info(.data, "语音：手指按下")
-                        Task {
+                        // ⚠️ **所有界面可见的状态改动都在这个 Task 里做。**
+                        //
+                        // 直接在手势的 onChanged 里改，SwiftUI 会把手势期间的
+                        // 变化推迟到手势结束 —— 按住不动时就是"要等松手才弹提示"。
+                        // 跳一个 tick 就出了手势事务，会立刻渲染。
+                        //
+                        // 占位（claimStart）仍然是同步的，所以并发依然被挡住。
+                        Task { @MainActor in
+                            recorder.markRecordingUI()
                             if await recorder.startCaptureAndReport() == false {
                                 onVoiceProblem("没有麦克风权限。去「设置 → 隐私与安全性 → 麦克风」里打开。")
                             }

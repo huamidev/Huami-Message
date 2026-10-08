@@ -109,8 +109,11 @@ final class VoiceRecorder {
     ///
     /// 代价是"正在录"可能短暂地是个乐观状态 —— 但人耳听到的是
     /// 按键的即时反馈，而几十毫秒的空档没人听得出来。
+    /// 一步到位的老入口（内部用）。界面走的是 claimStart + markRecordingUI 两步，
+    /// 因为界面那一步必须跳出手势事务。
     func start() async -> Bool {
-        guard begin() else { return true }
+        guard claimStart() else { return true }
+        markRecordingUI()
         return await beginCapture()
     }
 
@@ -132,16 +135,35 @@ final class VoiceRecorder {
     ///
     /// 拆开之后，"已经在录了"这个判断是**同步**做的，
     /// 第二次 onChanged 根本进不来。异步的部分只做一次。
-    func begin() -> Bool {
+    /// 第一步：**同步**占位。只挡并发，**不碰任何界面可见的状态**。
+    ///
+    /// 【为什么必须和下一步分开 —— "按住不动很慢、一滑就秒开"的真正原因】
+    ///
+    /// 用户的实测：
+    ///   从按钮上滑或任何方向滑 → **秒开**
+    ///   单独按住不动           → **很慢**
+    ///
+    /// 滑动会**连续触发很多次** onChanged，中途总有渲染机会；
+    /// 而按住不动时 onChanged **只在按下那一瞬间触发一次**，
+    /// 而 SwiftUI 会把**手势进行中**的状态变化推迟到手势结束才渲染 ——
+    /// 所以提示条要等到松手才画出来，看起来就是"很慢"。
+    ///
+    /// 所以：这里只做同步占位（挡住并发），界面状态交给
+    /// markRecordingUI()，由调用方**扔到下一个 tick**去改 ——
+    /// 那一步已经跳出了手势事务，SwiftUI 会立刻渲染。
+    func claimStart() -> Bool {
         guard !isRecording, !isPreparing else { return false }
-
         isPreparing = true
-        isRecording = true
         pressedAt = Date()
+        return true
+    }
+
+    /// 第二步：把"正在录"显示出来。**必须由调用方在 Task/下一个 tick 里调用。**
+    func markRecordingUI() {
+        isRecording = true
         seconds = 0
         Haptics.tap()
         startTimer()
-        return true
     }
 
     /// 从"手指按下"到现在过了多久。日志用。
