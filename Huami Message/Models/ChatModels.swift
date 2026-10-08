@@ -135,6 +135,15 @@ struct Message: Identifiable, Hashable {
     /// 和"文字是空的"没有区别，多一个可选值只会让每处都多一层解包。
     var imageURL: URL?
 
+    /// 语音消息的音频地址。纯文字/图片消息是 nil。
+    var audioURL: URL?
+
+    /// 语音时长（秒）。
+    ///
+    /// **单独存，不从音频文件里读** —— 列表里要显示「3″」，
+    /// 而读时长得先把整个文件下载下来。为一个数字下几百 KB 不划算。
+    var audioSeconds: Double?
+
     var sender: Sender
     var sentAt: Date
 
@@ -153,6 +162,8 @@ struct Message: Identifiable, Hashable {
         friendID: Friend.ID,
         text: String,
         imageURL: URL? = nil,
+        audioURL: URL? = nil,
+        audioSeconds: Double? = nil,
         sender: Sender,
         sentAt: Date = .now,
         polishedWith: PolishStyle? = nil,
@@ -162,6 +173,8 @@ struct Message: Identifiable, Hashable {
         self.friendID = friendID
         self.text = text
         self.imageURL = imageURL
+        self.audioURL = audioURL
+        self.audioSeconds = audioSeconds
         self.sender = sender
         self.sentAt = sentAt
         self.polishedWith = polishedWith

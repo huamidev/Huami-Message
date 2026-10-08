@@ -67,6 +67,19 @@ enum AppServices {
                                        contentType: "image/jpeg")
     }
 
+    /// 传一段语音。
+    ///
+    /// 复用 chat-images 那个桶 —— 名字是历史原因，存储空间本身不关心内容。
+    /// 单独再建一个桶的话，权限规则要重写一遍，不划算。
+    static func uploadVoice(_ data: Data) async throws -> URL {
+        guard let client else {
+            throw SupabaseError.http(status: 503, message: "现在是示例模式，发不了语音。")
+        }
+        return try await client.upload(data, bucket: SupabaseClient.Bucket.chat,
+                                       contentType: "audio/m4a",
+                                       fileExtension: "m4a")
+    }
+
     /// 传一张头像，返回可以直接显示的网址。
     static func uploadAvatar(_ data: Data) async throws -> URL {
         guard let client else {

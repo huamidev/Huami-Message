@@ -116,6 +116,10 @@ final class StoredMessage {
     /// 而且"空值""格式不对"这种情况，用字符串判断直白得多。
     var imageURLString: String?
 
+    /// 语音地址和时长。理由同 message。
+    var audioURLString: String?
+    var audioSeconds: Double?
+
     /// 是不是我发的。
     /// 数据库里存 Bool 而不是存 enum，是为了简单可靠 —— 只有两种情况。
     var isMine: Bool
@@ -137,6 +141,8 @@ final class StoredMessage {
         friendID: UUID,
         text: String,
         imageURLString: String?,
+        audioURLString: String? = nil,
+        audioSeconds: Double? = nil,
         isMine: Bool,
         sentAt: Date,
         polishedStyle: String?,
@@ -146,10 +152,37 @@ final class StoredMessage {
         self.friendID = friendID
         self.text = text
         self.imageURLString = imageURLString
+        self.audioURLString = audioURLString
+        self.audioSeconds = audioSeconds
         self.isMine = isMine
         self.sentAt = sentAt
         self.polishedStyle = polishedStyle
         self.statusRaw = statusRaw
+    }
+
+    /// 用界面用的 struct **统一覆盖所有来自消息本身的字段**。
+    ///
+    /// 【为什么要有这么一个方法】
+    ///
+    /// 这个坑在"消息"上已经踩过**两次**：
+    ///   · imageURLString —— 图片发出去了、服务器也收到了，界面却是空消息
+    ///   · 后来加字段时又差点漏
+    ///
+    /// 原因都是同一个：更新路径是"手写字段列表"，
+    /// 加新字段时只改了一处，另一个字段被默认值悄悄覆盖 ——
+    /// 编译不报错、界面也不报错。
+    ///
+    /// 所以集中到这里：**以后加字段只改 init 和这一个方法**。
+    ///
+    /// 注意 `statusRaw` **故意不覆盖** —— 发送状态是本地说了算
+    ///（见 saveFromRemote 那段说明）。
+    func apply(_ message: Message) {
+        self.text = message.text
+        self.imageURLString = message.imageURL?.absoluteString
+        self.audioURLString = message.audioURL?.absoluteString
+        self.audioSeconds = message.audioSeconds
+        self.sentAt = message.sentAt
+        self.polishedStyle = message.polishedWith?.rawValue
     }
 
     /// 从界面用的 struct 造一条档案
@@ -173,6 +206,8 @@ final class StoredMessage {
             friendID: friendID,
             text: text,
             imageURL: imageURLString.flatMap(URL.init(string:)),
+            audioURL: audioURLString.flatMap(URL.init(string:)),
+            audioSeconds: audioSeconds,
             sender: isMine ? .me : .friend,
             sentAt: sentAt,
             polishedWith: polishedStyle.flatMap(PolishStyle.init(rawValue:)),

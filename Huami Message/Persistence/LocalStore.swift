@@ -306,10 +306,9 @@ final class SwiftDataLocalStore: LocalStore {
             //
             // 以后再加消息字段，**两个地方都要改**（这里和 StoredMessage 的 init）。
             existing.ownerIDString = ownerIDString
-            existing.text = message.text
-            existing.imageURLString = message.imageURL?.absoluteString
-            existing.sentAt = message.sentAt
-            existing.polishedStyle = message.polishedWith?.rawValue
+            existing.apply(message)
+            // statusRaw **单独设**：它是本地说了算的，
+            // 不属于"从消息本身覆盖"的那一组（见 apply 的说明）
             existing.statusRaw = message.status.rawValue
         } else {
             let stored = StoredMessage(from: message)

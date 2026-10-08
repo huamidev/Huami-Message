@@ -332,6 +332,45 @@ final class ChatStore {
         }
     }
 
+    /// 发一段语音。
+    ///
+    /// 和发图片走同一条路：**本地先有一条、立刻可见**，再上传，
+    /// 最后把地址换成服务器上的。理由见 sendImage。
+    func sendVoice(_ data: Data, seconds: Double, to friendID: Friend.ID) async {
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).m4a")
+        guard (try? data.write(to: temp)) != nil else { return }
+
+        let message = Message(
+            friendID: friendID,
+            text: "",
+            audioURL: temp,
+            audioSeconds: seconds,
+            sender: .me,
+            status: .sending
+        )
+        persist(message)
+        messagesByFriend[friendID, default: []].append(message)
+        touch(friendID: friendID, last: "[语音]", at: message.sentAt)
+
+        do {
+            let remoteURL = try await AppServices.uploadVoice(data)
+
+            var ready = message
+            ready.audioURL = remoteURL
+            persist(ready)
+            replace(message.id, in: friendID, with: ready)
+
+            await deliver(ready)
+        } catch {
+            var failed = message
+            failed.status = .failed
+            persist(failed)
+            replace(message.id, in: friendID, with: failed)
+            Haptics.warning()
+        }
+    }
+
     /// 用户在界面上点了"重试"
     func retry(_ message: Message) async {
         var retrying = message
