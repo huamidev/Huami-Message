@@ -16,7 +16,7 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationStack {
-            GlassPage {
+            AppPage {
                 ScrollView {
                     VStack(spacing: 16) {
                         identityCard
@@ -25,7 +25,7 @@ struct ProfileView: View {
                         aboutCard
                     }
                     .padding(16)
-                    .padding(.bottom, 72)
+                    .padding(.bottom, 96)
                 }
                 .scrollIndicators(.hidden)
             }
@@ -42,16 +42,16 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("未登录")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.textPrimary)
                 Text("第 1 步会接入账号（通过 Apple 登录）")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(Theme.textTertiary)
             }
 
             Spacer()
         }
         .padding(16)
-        .glassCard(.thin)
+        .card()
     }
 
     // MARK: - 隐私（重要）
@@ -75,7 +75,7 @@ struct ProfileView: View {
             )
         }
         .padding(16)
-        .glassCard(.thin)
+        .card()
     }
 
     // MARK: - 设置
@@ -92,30 +92,30 @@ struct ProfileView: View {
             settingRow("举报与屏蔽", value: "待接入", enabled: false)
         }
         .padding(16)
-        .glassCard(.thin)
+        .card()
     }
 
     private var aboutCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("关于", icon: "info.circle.fill", tint: Color(red: 1.0, green: 0.78, blue: 0.35))
+            sectionTitle("关于", icon: "info.circle.fill", tint: Theme.warning)
 
             Text("Huami Message")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Theme.textPrimary)
 
             Text("这是一个「帮你把话说好」的工具，不是一个普通的聊天软件。")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(Theme.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text("版本 1.0 · 开发中（第 0 步：界面）")
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.35))
+                .foregroundStyle(Theme.textTertiary)
                 .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassCard(.ultraThin)
+        .card(.subtle)
     }
 
     // MARK: - 小组件
@@ -127,7 +127,7 @@ struct ProfileView: View {
                 .foregroundStyle(tint)
             Text(text)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.textPrimary)
         }
     }
 
@@ -135,10 +135,10 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Theme.textPrimary)
             Text(detail)
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(Theme.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -150,18 +150,18 @@ struct ProfileView: View {
         HStack {
             Text(title)
                 .font(.system(size: 14))
-                .foregroundStyle(.white.opacity(enabled ? 0.9 : 0.55))
+                .foregroundStyle(enabled ? Theme.textPrimary : Theme.textSecondary)
             Spacer()
             Text(value)
                 .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(enabled ? 0.5 : 0.3))
+                .foregroundStyle(Theme.textTertiary)
         }
         .padding(.vertical, 11)
     }
 
     private var divider: some View {
         Rectangle()
-            .fill(.white.opacity(0.08))
+            .fill(Theme.separator)
             .frame(height: 0.8)
     }
 }

@@ -60,15 +60,15 @@ struct ReportSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("举报对象")
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Theme.textTertiary)
                 Text(friend.name)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.textPrimary)
             }
             Spacer()
         }
         .padding(14)
-        .glassCard(.ultraThin, radius: 16, stroke: 0.1)
+        .card(.subtle, radius: 16)
     }
 
     // MARK: - 原因
@@ -77,7 +77,7 @@ struct ReportSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("举报原因")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.textPrimary)
 
             ForEach(ReportReason.allCases) { item in
                 Button {
@@ -86,10 +86,10 @@ struct ReportSheet: View {
                     HStack(spacing: 10) {
                         Image(systemName: reason == item ? "largecircle.fill.circle" : "circle")
                             .font(.system(size: 17))
-                            .foregroundStyle(reason == item ? Theme.accent : .white.opacity(0.3))
+                            .foregroundStyle(reason == item ? Theme.accent : Theme.textTertiary)
                         Text(item.title)
                             .font(.system(size: 15))
-                            .foregroundStyle(.white.opacity(0.9))
+                            .foregroundStyle(Theme.textPrimary)
                         Spacer()
                     }
                     .padding(.vertical, 7)
@@ -99,7 +99,7 @@ struct ReportSheet: View {
             }
         }
         .padding(16)
-        .glassCard(.thin)
+        .card()
     }
 
     // MARK: - 补充说明
@@ -109,11 +109,11 @@ struct ReportSheet: View {
             HStack(spacing: 4) {
                 Text("补充说明")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.textPrimary)
                 if reason == .other {
                     Text("（选「其他」时必填）")
                         .font(.system(size: 11))
-                        .foregroundStyle(Color(red: 1.0, green: 0.7, blue: 0.3))
+                        .foregroundStyle(Theme.warning)
                 }
             }
 
@@ -123,14 +123,14 @@ struct ReportSheet: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 80)
                 .padding(8)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
+                        .strokeBorder(Theme.separator, lineWidth: 0.8)
                 }
         }
         .padding(16)
-        .glassCard(.ultraThin, radius: 16, stroke: 0.1)
+        .card(.subtle, radius: 16)
     }
 
     // MARK: - 零容忍条款（审核要看的就是这一段）
@@ -143,7 +143,7 @@ struct ReportSheet: View {
                     .foregroundStyle(Theme.mint)
                 Text("我们会怎么处理")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.textPrimary)
             }
 
             bullet("我们**零容忍**骚扰、色情、暴力、诈骗和垃圾信息。")
@@ -153,19 +153,19 @@ struct ReportSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassCard(.thin)
+        .card()
     }
 
     private func bullet(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Circle()
-                .fill(.white.opacity(0.3))
+                .fill(Theme.textTertiary)
                 .frame(width: 4, height: 4)
                 .padding(.top, 7)
             // 用 LocalizedStringKey 让 **粗体** 这种 Markdown 生效
             Text(LocalizedStringKey(text))
                 .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -184,8 +184,8 @@ struct ReportSheet: View {
                 .padding(.vertical, 14)
                 .background(
                     canSubmit
-                        ? AnyShapeStyle(Color(red: 0.85, green: 0.30, blue: 0.30))
-                        : AnyShapeStyle(Color.white.opacity(0.12)),
+                        ? AnyShapeStyle(Theme.danger)
+                        : AnyShapeStyle(Theme.separator),
                     in: Capsule()
                 )
         }

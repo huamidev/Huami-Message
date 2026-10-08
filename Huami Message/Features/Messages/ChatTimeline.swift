@@ -52,11 +52,11 @@ struct DaySeparatorView: View {
     var body: some View {
         Text(Self.label(for: date))
             .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.white.opacity(0.55))
+            .foregroundStyle(Theme.textSecondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay { Capsule().strokeBorder(.white.opacity(0.10), lineWidth: 0.6) }
+            .background(Theme.separator, in: Capsule())
+            .overlay { Capsule().strokeBorder(Color.black.opacity(0.04), lineWidth: 0.5) }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
     }

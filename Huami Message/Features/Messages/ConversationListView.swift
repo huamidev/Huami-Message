@@ -28,7 +28,7 @@ struct ConversationListView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            GlassPage {
+            AppPage {
                 List {
                     ForEach(store.conversations) { conversation in
                         // 用 Button 手动压栈，而不用 NavigationLink ——
@@ -74,7 +74,7 @@ struct ConversationListView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.hidden)
-                .contentMargins(.bottom, 72, for: .scrollContent)
+                .contentMargins(.bottom, 96, for: .scrollContent)
             }
             .navigationTitle("消息")
             .navigationDestination(for: Conversation.self) { conversation in
@@ -103,13 +103,13 @@ struct ConversationListView: View {
         VStack(spacing: 8) {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 28))
-                .foregroundStyle(.white.opacity(0.25))
+                .foregroundStyle(Theme.textTertiary)
             Text("还没有聊天")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(Theme.textTertiary)
             Text("第 1 步接上服务器后，就能加真实好友了")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(Theme.textTertiary)
         }
     }
 }
@@ -134,12 +134,12 @@ private struct ConversationRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(conversation.friend.name)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Theme.textPrimary)
 
                     if conversation.isBlocked {
                         Label("已拉黑", systemImage: "hand.raised.fill")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Color(red: 1.0, green: 0.5, blue: 0.5))
+                            .foregroundStyle(Theme.danger)
                             .labelStyle(.titleAndIcon)
                     }
 
@@ -147,13 +147,13 @@ private struct ConversationRow: View {
 
                     Text(timeLabel(conversation.lastTime))
                         .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(Theme.textTertiary)
                 }
 
                 HStack(alignment: .center) {
                     Text(conversation.lastMessage.isEmpty ? "（没有消息）" : conversation.lastMessage)
                         .font(.system(size: 14))
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
 
                     Spacer(minLength: 8)
@@ -170,7 +170,7 @@ private struct ConversationRow: View {
             }
         }
         .padding(14)
-        .glassCard(.thin)
+        .card()
     }
 
     /// 右上角的时间：今天的显示「时:分」，更早的显示「月/日」。

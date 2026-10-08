@@ -39,7 +39,7 @@ struct MessageBubble: View {
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
                 Text(message.text)
                     .font(.system(size: 16))
-                    .foregroundStyle(isMine ? .white : Color.white.opacity(0.92))
+                    .foregroundStyle(isMine ? .white : Theme.textPrimary)
                     // 长按可以选中复制 —— 聊天 App 的基本功能，少一行都会被人抱怨
                     .textSelection(.enabled)
                     .padding(.horizontal, 14)
@@ -87,7 +87,7 @@ struct MessageBubble: View {
 
             Text(message.sentAt, format: .dateTime.hour().minute())
                 .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.38))
+                .foregroundStyle(Theme.textTertiary)
 
             if isMine { statusView }
         }
@@ -103,7 +103,7 @@ struct MessageBubble: View {
             // 而不是让你盯着它数秒数。
             ProgressView()
                 .controlSize(.mini)
-                .tint(.white.opacity(0.55))
+                .tint(Theme.textSecondary)
 
         case .failed:
             // 失败必须是**可以点的**，而且要说清楚点它会干什么。
@@ -113,7 +113,7 @@ struct MessageBubble: View {
                     Text("发送失败，重试")
                 }
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color(red: 1.0, green: 0.45, blue: 0.45))
+                .foregroundStyle(Theme.danger)
             }
             .buttonStyle(.plain)
 
@@ -131,15 +131,15 @@ struct MessageBubble: View {
             // 我发的：主色渐变 + 一层同色柔光，让气泡「浮」在背景上
             RoundedRectangle(cornerRadius: Theme.bubbleRadius, style: .continuous)
                 .fill(Theme.myBubbleGradient)
-                .shadow(color: Theme.accent.opacity(0.35), radius: 12, y: 4)
+                .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
         } else {
             // 好友发的：毛玻璃。背景的极光会从气泡里透出来，
             // 而且是「半透明地透」，比纯色块高级得多。
             RoundedRectangle(cornerRadius: Theme.bubbleRadius, style: .continuous)
-                .fill(GlassThickness.thin.material)
+                .fill(Theme.surface)
                 .overlay {
                     RoundedRectangle(cornerRadius: Theme.bubbleRadius, style: .continuous)
-                        .strokeBorder(.white.opacity(0.16), lineWidth: 0.8)
+                        .strokeBorder(Theme.separator, lineWidth: 0.8)
                 }
         }
     }

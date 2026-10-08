@@ -34,9 +34,9 @@ struct ChatView: View {
 
     var body: some View {
         ZStack {
-            // 聊天页是自己压栈进来的，不在 GlassPage 里，
+            // 聊天页是自己压栈进来的，不在 AppPage 里，
             // 所以这里也要单独铺一层极光背景，否则推入后背景会变黑。
-            AuroraBackground()
+            AppBackground()
 
             ZStack(alignment: .bottom) {
                 messageList
@@ -69,14 +69,14 @@ struct ChatView: View {
                 polishedWith = style
             }
             .presentationDetents([.medium, .large])
-            .presentationBackground(.regularMaterial)
+            .presentationBackground(Theme.surface)
             .presentationCornerRadius(30)
         }
         .sheet(isPresented: $showReportSheet) {
             ReportSheet(friend: conversation.friend) { reason, note in
                 store.report(conversation.friend.id, reason: reason, note: note)
             }
-            .presentationBackground(.regularMaterial)
+            .presentationBackground(Theme.surface)
             .presentationCornerRadius(30)
         }
         // 删除是不可撤销的，必须再问一次 —— 这是"防手滑"的基本礼貌
@@ -179,12 +179,12 @@ struct ChatView: View {
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(Theme.accent)
         }
-        .foregroundStyle(Color(red: 1.0, green: 0.6, blue: 0.6))
+        .foregroundStyle(Theme.danger)
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(.ultraThinMaterial)
+        .background(Color(hex: 0xFDECEC))
         .overlay(alignment: .bottom) {
-            Rectangle().fill(.white.opacity(0.08)).frame(height: 0.8)
+            Rectangle().fill(Theme.separator).frame(height: 0.8)
         }
         .transition(.move(edge: .top).combined(with: .opacity))
     }

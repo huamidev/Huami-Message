@@ -27,7 +27,7 @@ struct AdvisorView: View {
 
     var body: some View {
         NavigationStack {
-            GlassPage {
+            AppPage {
                 ScrollView {
                     VStack(spacing: 16) {
                         introCard
@@ -37,7 +37,7 @@ struct AdvisorView: View {
                         }
                     }
                     .padding(16)
-                    .padding(.bottom, 72)
+                    .padding(.bottom, 96)
                 }
                 .scrollIndicators(.hidden)
                 .scrollDismissesKeyboard(.interactively)
@@ -57,24 +57,24 @@ struct AdvisorView: View {
                     .foregroundStyle(Theme.accent)
                 Text("帮你把话想清楚")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.textPrimary)
             }
 
             Text("把对方说的话贴进来，军师帮你分析他真正的意思，再给你几个可以怎么回的方向。")
                 .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Divider().overlay(.white.opacity(0.1))
+            Divider().overlay(Theme.separator)
 
             Text("聊天框旁边的「润色」改的是你正在打的那一句话；这里帮你想的是整件事该怎么办。")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(Theme.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassCard(.ultraThin)
+        .card(.subtle)
     }
 
     // MARK: - 输入区
@@ -83,14 +83,14 @@ struct AdvisorView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("对方说了什么")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.textPrimary)
 
             ZStack(alignment: .topLeading) {
                 // 自己画占位文字，因为 TextEditor 没有原生的 placeholder
                 if situation.isEmpty {
                     Text("比如：你昨天怎么没来？大家都等你很久了，你这样不太好吧。")
                         .font(.system(size: 14))
-                        .foregroundStyle(.white.opacity(0.3))
+                        .foregroundStyle(Theme.textTertiary)
                         .padding(.top, 8)
                         .padding(.leading, 5)
                         .allowsHitTesting(false)   // 别挡住点击，否则点不进去
@@ -105,10 +105,10 @@ struct AdvisorView: View {
                     .focused($editorFocused)
             }
             .padding(8)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Theme.surfaceAlt, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
+                    .strokeBorder(Theme.separator, lineWidth: 0.8)
             }
 
             Button(action: analyze) {
@@ -127,7 +127,7 @@ struct AdvisorView: View {
             .animation(.snappy(duration: 0.2), value: canAnalyze)
         }
         .padding(16)
-        .glassCard(.thin)
+        .card()
     }
 
     // MARK: - 结果区（流式输出）
@@ -137,10 +137,10 @@ struct AdvisorView: View {
             HStack(spacing: 8) {
                 Image(systemName: "lightbulb.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.35))
+                    .foregroundStyle(Theme.warning)
                 Text("军师的分析")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.textPrimary)
                 Spacer()
                 if isThinking { StreamingCaret() }
             }
@@ -150,12 +150,12 @@ struct AdvisorView: View {
                 // 行距调大一点。中文长段落挤在一起很难读，
                 // 这一行代码对「读起来舒不舒服」的影响比换字体还大。
                 .lineSpacing(5)
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(Theme.textPrimary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(16)
-        .glassCard(.thin)
+        .card()
     }
 
     // MARK: - 动作

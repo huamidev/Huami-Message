@@ -87,26 +87,26 @@ struct PolishSheet: View {
             Text("演示模式：下面三个版本是预置示例，AI 还没接入")
                 .font(.system(size: 11, weight: .medium))
         }
-        .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.35))
+        .foregroundStyle(Theme.warning)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(Color(red: 1.0, green: 0.78, blue: 0.35).opacity(0.12), in: Capsule())
+        .background(Theme.warning.opacity(0.12), in: Capsule())
     }
 
     private var originalCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("你写的")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Theme.textTertiary)
             // 万一 original 是空的（比如被程序调用时没传），也别显示一个空盒子 ——
             // 给一句提示，比让人盯着空白猜要好。
             Text(original.isEmpty ? "（没有拿到原文，请重新输入后再点润色）" : original)
                 .font(.system(size: 15))
-                .foregroundStyle(.white.opacity(original.isEmpty ? 0.35 : 0.75))
+                .foregroundStyle(original.isEmpty ? Theme.textTertiary : Theme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .glassCard(.ultraThin, radius: 16, stroke: 0.1)
+        .card(.subtle, radius: 16)
     }
 
     private func variantCard(_ style: PolishStyle) -> some View {
@@ -125,10 +125,10 @@ struct PolishSheet: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(style.title)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Theme.textPrimary)
                     Text(style.subtitle)
                         .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(Theme.textTertiary)
                 }
                 Spacer()
             }
@@ -137,7 +137,7 @@ struct PolishSheet: View {
             HStack(alignment: .bottom, spacing: 3) {
                 Text(text)
                     .font(.system(size: 15))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(Theme.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !done && !text.isEmpty {
                     StreamingCaret()
@@ -163,7 +163,7 @@ struct PolishSheet: View {
             }
         }
         .padding(14)
-        .glassCard(.thin)
+        .card()
         .animation(.snappy(duration: 0.3), value: done)
     }
 
@@ -176,10 +176,10 @@ struct PolishSheet: View {
                 .foregroundStyle(Theme.mint)
             Text("润色只发送你正在打的这一句话，不会发送你和好友的聊天记录。")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
-        .glassCard(.ultraThin, radius: 16, stroke: 0.1)
+        .card(.subtle, radius: 16)
     }
 }

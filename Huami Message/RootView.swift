@@ -38,8 +38,8 @@ struct RootView: View {
     }
 
     var body: some View {
-        // 注意：这里**没有**放 AuroraBackground()。
-        // 极光背景放在每个页面内部（见 Design/GlassPage.swift 里的说明）——
+        // 注意：这里**没有**放 AppBackground()。
+        // 极光背景放在每个页面内部（见 Design/AppPage.swift 里的说明）——
         // 放在这里会被 TabView 自己的不透明背景盖住，变成一片死黑。
         TabView(selection: $selection) {
             ConversationListView()
@@ -67,7 +67,7 @@ struct RootView: View {
         // 这是个刻意的取舍：极光背景 + 毛玻璃在深色下最好看，
         // 而且只做一套配色能省掉将近一半的界面工作量。
         // 以后要做浅色，改 Theme.swift 加一套配色就行，界面不用动。
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
         .task { await store.start() }
     }
 }

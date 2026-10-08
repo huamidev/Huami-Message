@@ -37,9 +37,9 @@ struct ChatInputBar: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Theme.accent)
                     .frame(width: 38, height: 38)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Theme.surfaceAlt, in: Circle())
                     .overlay {
-                        Circle().strokeBorder(.white.opacity(0.18), lineWidth: 0.8)
+                        Circle().strokeBorder(Theme.separator, lineWidth: 0.8)
                     }
             }
             .disabled(!canSend)          // 没打字时没什么可润色的
@@ -71,7 +71,7 @@ struct ChatInputBar: View {
         // 这里用 regular 而不是 ultraThin：
         // 打字是需要看清文字的场景，玻璃要「厚」一点，保证可读性。
         // 毛玻璃的厚度选择是有功能考虑的，不只是审美。
-        .glassCard(.regular, radius: 26)
+        .card(.elevated, radius: 26)
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
     }
