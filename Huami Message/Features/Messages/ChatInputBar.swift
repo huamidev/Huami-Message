@@ -141,18 +141,29 @@ struct ChatInputBar: View {
         // 这一块我第一版**漏做了**：手势接好了，但屏幕上什么都不变，
         // 用户按住之后唯一的感受就是"点了没反应"。
         // **没有反馈的功能等于坏了的功能。**
-        if recorder.showsRecordingUI {
-            recordingHint
-                // ⚠️ 这个偏移量要**大于提示条自己的高度**，
-                //    否则它会压住输入栏（我第一版写 -118，正好压住一条边）。
-                //    提示条大概 140 磅高，留 20 磅空隙 → 160。
-                .offset(y: -160)
-                .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                .zIndex(1)
-        }
         }
         .animation(.snappy(duration: 0.18), value: recorder.showsRecordingUI)
         .animation(.snappy(duration: 0.18), value: cancelling)
+        // ── 录音提示浮在上方 ──
+        //
+        // ⚠️ **必须用 overlay，不能当 ZStack 的子视图。**
+        //
+        // 当子视图时，它一出现就改变了整个输入栏的布局尺寸，
+        // 而输入栏上挂着 .glassEffect —— **液态玻璃必须重新渲染**。
+        // 真机上重绘一次要一两秒，表现就是"代码说 318ms 就开始录了，
+        // 但提示条一两秒后才弹出来"（用户的原话）。
+        //
+        // overlay 不参与父视图的尺寸计算，所以它出现/消失都**不会触发布局变化**，
+        // 也就不会逼玻璃重绘。
+        .overlay(alignment: .top) {
+            if recorder.showsRecordingUI {
+                recordingHint
+                    // 偏移量要大于提示条自身高度，否则会压住输入栏
+                    .offset(y: -160)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)   // 别挡住手指
+            }
+        }
     }
 
     /// 录音时浮在上方的提示条。
@@ -161,7 +172,9 @@ struct ChatInputBar: View {
             Image(systemName: cancelling ? "xmark.circle.fill" : "waveform")
                 .font(.system(size: 26))
                 .foregroundStyle(cancelling ? Theme.danger : .white)
-                .symbolEffect(.variableColor.iterative, isActive: !cancelling)
+                // 这里原来有个 .symbolEffect(.variableColor.iterative) ——
+                // 一个**一直在跑**的动画。它和玻璃重绘叠在一起，
+                // 是"提示条弹不出来"的帮凶。静态图标信息量已经够了。
 
             Text(cancelling ? "松开手指，取消发送" : "松开发送")
                 .font(.system(size: 13, weight: .medium))
