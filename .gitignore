@@ -1,0 +1,19 @@
+# Xcode / macOS
+.DS_Store
+build/
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# 以后接入 Supabase / DeepSeek 时的密钥文件 —— 绝对不要提交到 git
+Secrets.plist
+*.env
