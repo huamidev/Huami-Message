@@ -334,6 +334,14 @@ struct ChatInputBar: View {
             // 尺寸统一 40×40，和顶栏返回键一样。
             // 写常量不写三遍数字 —— 改一个忘一个就不齐了。
             .frame(width: Self.controlHeight, height: Self.controlHeight)
+            // 真玻璃，挂在**外观**上而不是 buttonStyle 上。
+            //
+            // ⚠️ 之前用 .buttonStyle(.glass)：那个样式会**自己再包一圈内边距**，
+            // 于是设了 40 磅、看起来却有 50 磅，比中间的输入框大一圈
+            //（用户：「两边这两个有点大」）。
+            //
+            // 换成 .glassEffect 之后，尺寸就是我写的那个数，三个零件才真齐。
+            .glassEffect(filled ? .regular : .regular.interactive(), in: .circle)
             .rotationEffect(.degrees(rotated ? 90 : 0))
     }
 
@@ -343,34 +351,15 @@ struct ChatInputBar: View {
                               active: Bool = false,
                               rotated: Bool = false,
                               action: @escaping () -> Void) -> some View {
-        // ⚠️ 这里就是"和顶栏返回键一样"的关键：
-        // .glass 是 iOS 26 那套液态玻璃按钮样式，**导航栏的返回键用的就是它**。
-        // 自己画一个圆底永远差一点点（这轮为这种事栽过四次），
-        // 直接用系统那套 —— 颜色、高光、阴影、按下反馈全都自动一致。
-        //
-        // 两个分支不能写成 `filled ? .plain : .glass` ——
-        // 那是两个不同的类型，推断不出来（编译报 "no member 'plain'"）。
-        Group {
-            if filled {
-                // 发送按钮是动作按钮，保留自己的实心配色，要一眼认出
-                Button {
-                    Haptics.tap()
-                    action()
-                } label: {
-                    circleLabel(icon: icon, filled: true, active: active, rotated: rotated)
-                        .background { Circle().fill(Theme.myBubbleGradient) }
-                }
-                .buttonStyle(.plain)
-            } else {
-                Button {
-                    Haptics.tap()
-                    action()
-                } label: {
-                    circleLabel(icon: icon, active: active, rotated: rotated)
-                }
-                .buttonStyle(.glass)
-            }
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            circleLabel(icon: icon, filled: filled, active: active, rotated: rotated)
         }
+        // 玻璃已经在外观那一层了（见 circleLabel），这里只要 plain。
+        // 用 .buttonStyle(.glass) 会**多包一圈内边距**，圆钮就比输入框大一圈。
+        .buttonStyle(.plain)
         .accessibilityLabel(label)
     }
 }
@@ -442,13 +431,15 @@ private extension View {
     /// 用不了的就用系统材质，别手配色值。
     @ViewBuilder
     func pillGlass() -> some View {
-        self.background {
-            Capsule(style: .continuous)
-                .fill(.regularMaterial)
-                .overlay {
-                    Capsule(style: .continuous)
-                        .strokeBorder(Theme.separator.opacity(0.55), lineWidth: 0.6)
-                }
-        }
+        // 真玻璃。
+        //
+        // API 在 **SwiftUICore** 里，不在 SwiftUI 里 —— 我第一次只搜了
+        // SwiftUI，只找到 .buttonStyle(.glass)（那是给按钮的），
+        // 于是以为"非按钮的容器没有玻璃 API"，退而用了材质。
+        // 结果用户一眼就看出来："中间的输入栏没有特效"。
+        //
+        // 教训：搜 API 要把相关的框架都搜一遍。
+        // SwiftUICore 是所有视图修饰符真正住的地方。
+        self.glassEffect(.regular, in: .capsule)
     }
 }
