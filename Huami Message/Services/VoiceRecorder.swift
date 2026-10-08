@@ -46,7 +46,10 @@ final class VoiceRecorder {
         guard !isRecording else { return true }
 
         let allowed = await AVAudioApplication.requestRecordPermission()
-        guard allowed else { return false }
+        guard allowed else {
+            AppLog.error(.network, "麦克风权限没拿到")
+            return false
+        }
 
         let session = AVAudioSession.sharedInstance()
         do {

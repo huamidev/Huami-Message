@@ -76,23 +76,31 @@ struct ChatInputBar: View {
                     // 它一次性给了按下、拖动、松手三件事，
                     // 而"上滑取消"正好需要一个拖动量。
                     // 长按手势只能告诉你按够了没有，拿不到手指位置。
-                    circleButton(icon: recorder.isRecording ? "waveform" : "mic.fill",
-                                 label: "按住说话",
-                                 active: recorder.isRecording,
-                                 action: {})
+                    circleLabel(icon: recorder.isRecording ? "waveform" : "mic.fill",
+                                active: recorder.isRecording)
+                        // contentShape：让整个圆都能按到，而不只是那根图标线条
+                        .contentShape(Circle())
                         .gesture(
                             DragGesture(minimumDistance: 0)
                                 .onChanged { value in
+                                    // 这几行日志是**排查用的** ——
+                                    // "按下去没反应"可能是三层：手势没触发、
+                                    // 权限没拿到、录音器没起来。不打日志只能猜。
                                     if !recorder.isRecording {
+                                        AppLog.info(.data, "麦克风：手指按下")
                                         Task {
                                             if await recorder.start() == false {
+                                                AppLog.error(.network, "麦克风：启动失败（多半是权限）")
                                                 onVoiceProblem("没有麦克风权限。去「设置 → 隐私与安全性 → 麦克风」里打开。")
+                                            } else {
+                                                AppLog.info(.data, "麦克风：开始录音")
                                             }
                                         }
                                     }
                                     cancelling = value.translation.height < -60
                                 }
                                 .onEnded { _ in
+                                    AppLog.info(.data, "麦克风：手指松开（正在录=\(recorder.isRecording)）")
                                     guard recorder.isRecording else { return }
                                     if cancelling {
                                         recorder.cancel()
@@ -218,6 +226,34 @@ struct ChatInputBar: View {
 
     // MARK: - 圆形按钮
 
+    /// 圆按钮的**外观**，不含 Button。
+    ///
+    /// ⚠️ 拆出来是必须的 —— 麦克风**不能用 Button**。
+    ///
+    /// `Button` 自带一个点击手势，会把挂在它上面的 `DragGesture` 吃掉：
+    /// 表现是**按下去完全没反应**（没有权限弹窗、没有提示、什么都没有）。
+    /// 我第一版就是把 DragGesture 挂在了 Button 上，收到的反馈是"没反应"。
+    ///
+    /// 所以：能点的用 `circleButton`，要按住/拖动的用这个 + 自己挂手势。
+    private func circleLabel(icon: String,
+                             filled: Bool = false,
+                             active: Bool = false,
+                             rotated: Bool = false) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(filled ? .white : (active ? Theme.accent : Theme.textSecondary))
+            .frame(width: 34, height: 34)
+            .background {
+                if filled {
+                    Circle().fill(Theme.myBubbleGradient)
+                } else {
+                    Circle().fill(Theme.surfaceAlt)
+                        .overlay { Circle().strokeBorder(Theme.separator, lineWidth: 0.8) }
+                }
+            }
+            .rotationEffect(.degrees(rotated ? 90 : 0))
+    }
+
     private func circleButton(icon: String,
                               label: String,
                               filled: Bool = false,
@@ -228,19 +264,7 @@ struct ChatInputBar: View {
             Haptics.tap()
             action()
         } label: {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(filled ? .white : (active ? Theme.accent : Theme.textSecondary))
-                .frame(width: 34, height: 34)
-                .background {
-                    if filled {
-                        Circle().fill(Theme.myBubbleGradient)
-                    } else {
-                        Circle().fill(Theme.surfaceAlt)
-                            .overlay { Circle().strokeBorder(Theme.separator, lineWidth: 0.8) }
-                    }
-                }
-                .rotationEffect(.degrees(rotated ? 90 : 0))
+            circleLabel(icon: icon, filled: filled, active: active, rotated: rotated)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
