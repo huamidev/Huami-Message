@@ -125,6 +125,20 @@ struct RootView: View {
         }
         .tint(Theme.accent)
         // 把数据管家交给下面所有页面
+        // ── 屏幕底部：让我们的手势优先于系统手势 ──
+        //
+        // 手机日志里的顺序完全定死了因果：
+        //     Gesture: System gesture gate timed out.   ← 闸门
+        //     语音：手指按下                              ← 我们才收到
+        //     提示条已画出                                ← 紧接着，一点不慢
+        //
+        // 也就是说：**延迟全部发生在"手指按下"之前**，是系统手势闸门。
+        // 挂在聊天页不够（那只是 NavigationStack 内部的一层），
+        // 这里挂在整棵树的最外层。
+        //
+        // ⚠️ 这个修饰符对"系统手势"的拦截是在**窗口**那一级生效的，
+        //    所以层级越靠外越有可能起作用。挂在输入栏内部肯定没用（试过）。
+        .defersSystemGestures(on: .bottom)
         .environment(store)
         .environment(auth)
         // 只做浅色一套配色。

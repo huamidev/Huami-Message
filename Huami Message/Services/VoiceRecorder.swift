@@ -208,6 +208,15 @@ final class VoiceRecorder {
     /// ⚠️ 写成**类的方法**而不是某个函数里的局部函数 ——
     /// 我第一次写成了局部函数，结果被插进了 warmUp 的作用域，
     /// 在 beginCapture 里就"找不到 elapsed"，编译不过。
+    /// 墙上时钟的毫秒时间戳。
+    ///
+    /// 用来和系统日志（比如 "Gesture: System gesture gate timed out."）
+    /// 对齐时间轴 —— 我们自己打的日志没有时间，只能看出顺序，
+    /// 看不出"到底隔了多久"。而这一次要查的恰恰就是**间隔**。
+    static func stamp() -> String {
+        String(format: "%.3f", Date().timeIntervalSince1970)
+    }
+
     private func elapsed() -> String {
         guard let pressedAt else { return "?" }
         return String(format: "%.0fms", Date().timeIntervalSince(pressedAt) * 1000)
@@ -267,7 +276,7 @@ final class VoiceRecorder {
                 return recorder
             }.value
             self.recorder = built
-            AppLog.info(.data, "语音耗时：**真正开始录 \(elapsed())**")
+            AppLog.info(.data, "语音耗时：**真正开始录 \(elapsed())**  @\(Self.stamp())")
         } catch {
             AppLog.error(.network, "录音起不来：\(error.localizedDescription)")
             stopQuietly()

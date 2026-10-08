@@ -184,7 +184,7 @@ struct ChatInputBar: View {
                     //
                     // 这个差值如果很大，说明时间花在**渲染之前**（手势闸门、
                     // 主线程阻塞），改录音那边的代码一点用都没有。
-                    .onAppear { AppLog.info(.data, "提示条已画出") }
+                    .onAppear { AppLog.info(.data, "提示条已画出  @\(VoiceRecorder.stamp())") }
             }
         }
     }
@@ -281,7 +281,7 @@ struct ChatInputBar: View {
                     //    会各自再启动一次录音，几次会话激活互相排队 ——
                     //    实测就是一两秒的延迟。
                     if recorder.claimStart() {
-                        AppLog.info(.data, "语音：手指按下")
+                        AppLog.info(.data, "语音：手指按下  @\(VoiceRecorder.stamp())")
                         // ⚠️ **所有界面可见的状态改动都在这个 Task 里做。**
                         //
                         // 直接在手势的 onChanged 里改，SwiftUI 会把手势期间的
