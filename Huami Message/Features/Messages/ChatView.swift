@@ -52,6 +52,9 @@ struct ChatView: View {
     /// 选图失败时要说的话
     @State private var photoError: String?
 
+    /// 点了还没做的功能时的说明
+    @State private var voiceNotice: String?
+
     /// **是否自动分析对方的消息。**
     ///
     /// 【这是整个 App 里最需要想清楚的一个开关】
@@ -186,6 +189,14 @@ struct ChatView: View {
                                 withAnimation(.snappy(duration: 0.24)) {
                                     toolsOpen.toggle()
                                 }
+                            },
+                            onPolish: {
+                                polishRequest = PolishRequest(original: draft)
+                            },
+                            onVoice: {
+                                // 语音消息还没做（下一步）。点了要**有反应**，
+                                // 不能默默什么都不发生 —— 那看起来就是坏了。
+                                voiceNotice = "语音消息还在做，下一步就轮到它。"
                             },
                             onSend: send
                         )
@@ -635,6 +646,14 @@ struct ChatView: View {
             Button("好") { photoError = nil }
         } message: {
             Text(photoError ?? "")
+        }
+        .alert("还没做", isPresented: Binding(
+            get: { voiceNotice != nil },
+            set: { if !$0 { voiceNotice = nil } }
+        )) {
+            Button("好") { voiceNotice = nil }
+        } message: {
+            Text(voiceNotice ?? "")
         }
         .photosPicker(isPresented: $showPhotoPicker,
                       selection: $pickedPhoto,

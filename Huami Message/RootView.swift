@@ -261,7 +261,9 @@ struct RootView: View {
             // 开发自检：发一张自己画的测试图，验证压缩→上传→显示这条链路
             if DevFlags.sendTestImage, let first = store.conversations.first {
                 try? await Task.sleep(for: .seconds(1))
-                let size = CGSize(width: 1400, height: 1050)
+                // 故意用**竖版**：横版看不出裁切问题，
+                // 用户抱怨的正是"竖着拍的照片上下各被切一块"。
+                let size = CGSize(width: 900, height: 1400)
                 let image = UIGraphicsImageRenderer(size: size).image { ctx in
                     UIColor.systemTeal.setFill()
                     ctx.fill(CGRect(origin: .zero, size: size))
