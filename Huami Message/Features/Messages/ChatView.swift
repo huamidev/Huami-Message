@@ -60,6 +60,12 @@ struct ChatView: View {
     /// 输入框里选中的位置（给「复制」用）
     @State private var draftSelection: TextSelection?
 
+    /// 是否要确认删除好友
+    @State private var showRemoveFriendConfirm = false
+
+    /// 删好友失败时要说的话
+    @State private var removeFriendError: String?
+
     /// **是否自动分析对方的消息。**
     ///
     /// 【这是整个 App 里最需要想清楚的一个开关】
@@ -432,6 +438,19 @@ struct ChatView: View {
 
             Divider()
 
+            // 「删除好友」和下面的「清空聊天记录」是**两件不同的事**，
+            // 所以中间隔一条线：
+            //   删除好友     = 解除关系，两边都不再是好友
+            //   清空聊天记录 = 只清我本地的记录，还是好友
+            // 用户搞混的代价很大 —— 一个是误删好友，一个是以为只清了记录。
+            Button(role: .destructive) {
+                showRemoveFriendConfirm = true
+            } label: {
+                Label("删除好友", systemImage: "person.badge.minus")
+            }
+
+            Divider()
+
             Button(role: .destructive) {
                 showClearConfirm = true
             } label: {
@@ -667,6 +686,33 @@ struct ChatView: View {
             Button("好") { voiceNotice = nil }
         } message: {
             Text(voiceNotice ?? "")
+        }
+        .confirmationDialog("删除好友？",
+                            isPresented: $showRemoveFriendConfirm,
+                            titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                Task {
+                    do {
+                        try await store.removeFriend(conversation.friend.id)
+                        dismiss()
+                    } catch {
+                        // 失败必须说出来 —— 否则用户以为删了，下次同步他又冒出来
+                        removeFriendError = (error as? LocalizedError)?.errorDescription
+                            ?? "没删掉，等一下再试。"
+                    }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("你们会互相从好友列表里消失，聊天记录也会清掉。\n\n如果只是不想收他的消息，用「拉黑」。")
+        }
+        .alert("删除好友", isPresented: Binding(
+            get: { removeFriendError != nil },
+            set: { if !$0 { removeFriendError = nil } }
+        )) {
+            Button("好") { removeFriendError = nil }
+        } message: {
+            Text(removeFriendError ?? "")
         }
         .task {
             // 开发自检：N 秒后自动返回，用来拍过渡动画

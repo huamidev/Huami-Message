@@ -55,6 +55,13 @@ protocol ChatService {
     ///
     /// 用户名是公开的：**任何人都能加你**（用户已确认接受这一点）。
     func addFriend(username: String) async throws -> Friend
+
+    /// 删除好友（**双向**：两边都解除）。
+    ///
+    /// 注意它和「删除聊天记录」是两件事：
+    ///   · 删除聊天 = 只清我本地的记录，还是好友
+    ///   · 删除好友 = 解除关系，两边都不再是好友
+    func removeFriend(_ id: Friend.ID) async throws
 }
 
 // MARK: - 加好友会出的错

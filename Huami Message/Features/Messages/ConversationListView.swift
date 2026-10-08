@@ -59,14 +59,21 @@ struct ConversationListView: View {
                         .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
 
-                            // 删除会话 —— 连同聊天记录一起删掉。
-                            // 这是审核要求的"用户必须能删掉自己的数据"。
+                            // **删除聊天**（不是删除好友）。
+                            //
+                            // 只清掉我本地的记录，好友关系还在 —— 所以左滑之后
+                            // 他还留在联系人里，还能继续聊。
+                            //
+                            // 这两个动作必须分清楚，所以文案写全：
+                            // 左滑是「删除聊天」，删好友在聊天页右上角的菜单里。
+                            //
+                            // 另外一个硬要求：这是审核要的"用户必须能删掉自己的数据"。
                             Button(role: .destructive) {
                                 withAnimation(.snappy) {
                                     store.deleteConversation(conversation.friend.id)
                                 }
                             } label: {
-                                Label("删除", systemImage: "trash.fill")
+                                Label("删除聊天", systemImage: "trash.fill")
                             }
 
                             // 标记未读：把这条会话标成"待会儿要回"。

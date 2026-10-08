@@ -108,6 +108,17 @@ final class SupabaseChatService: ChatService {
             .sorted { $0.lastTime > $1.lastTime }
     }
 
+    func removeFriend(_ id: Friend.ID) async throws {
+        // 走数据库函数，因为它要在服务端**一次删两行**（我→他、他→我）。
+        // 客户端直连 DELETE 只能删到自己那行，见 supabase/remove-friend.sql。
+        let ok: Bool = try await client.post(
+            "/rest/v1/rpc/remove_friend",
+            body: TargetBody(target: id.uuidString.lowercased()),
+            as: Bool.self
+        )
+        guard ok else { throw ChatError.network }
+    }
+
     // ========================================================================
     // 某个会话的消息
     // ========================================================================
@@ -328,6 +339,11 @@ struct NewMessageRow: Encodable {
 
 /// 加好友时发给数据库函数的参数。
 /// 键名必须和函数签名里的参数名一致（`username`）。
+/// 只传一个目标 id 的请求体（删好友用）。
+private struct TargetBody: Encodable {
+    let target: String
+}
+
 private struct UsernameBody: Encodable {
     let username: String
 }

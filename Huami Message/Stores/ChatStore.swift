@@ -344,6 +344,19 @@ final class ChatStore {
         messagesByFriend[friendID] = nil
     }
 
+    /// 删除好友（双向）。
+    ///
+    /// ⚠️ **顺序很重要：先让服务器删成功，再清本地。**
+    ///
+    /// 反过来的话，网络失败时会出现最难查的状态：
+    /// 你这边看着删掉了，下次同步他又冒出来 —— 用户会以为"删除坏了"。
+    /// 宁可删失败时明确报错，也不要"看起来删了其实没删"。
+    func removeFriend(_ friendID: Friend.ID) async throws {
+        try await remote.removeFriend(friendID)
+        deleteConversation(friendID)
+        Haptics.success()
+    }
+
     /// 清空聊天记录，但保留这个好友
     func clearMessages(with friendID: Friend.ID) {
         local.clearMessages(with: friendID)
