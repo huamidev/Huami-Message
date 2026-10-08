@@ -8,6 +8,8 @@ struct ChatView: View {
 
     @Environment(ChatStore.self) private var store
 
+    @Environment(\.dismiss) private var dismiss
+
     @State private var draft = ""
 
     /// 记住这次发送用了哪种润色风格。
@@ -654,6 +656,12 @@ struct ChatView: View {
             Button("好") { voiceNotice = nil }
         } message: {
             Text(voiceNotice ?? "")
+        }
+        .task {
+            // 开发自检：N 秒后自动返回，用来拍过渡动画
+            guard DevFlags.popAfter > 0 else { return }
+            try? await Task.sleep(for: .seconds(DevFlags.popAfter))
+            dismiss()
         }
         .photosPicker(isPresented: $showPhotoPicker,
                       selection: $pickedPhoto,

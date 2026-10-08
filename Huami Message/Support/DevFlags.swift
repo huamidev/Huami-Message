@@ -140,6 +140,11 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "sendTestImage")
     }
 
+    /// 进聊天页几秒后自动返回（用来拍返回时的过渡动画）
+    static var popAfter: Int {
+        UserDefaults.standard.integer(forKey: "popAfter")
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

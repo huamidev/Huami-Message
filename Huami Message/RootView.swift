@@ -44,6 +44,17 @@ struct RootView: View {
 
     @State private var selection: AppTab = RootView.initialTab
 
+    /// App 是在前台还是后台。
+    ///
+    /// 【为什么必须盯着它】
+    ///
+    /// 别人的昵称、头像是在服务器上的。App 从后台切回前台时
+    /// 如果不重新拉一次，你就会一直看着旧名字 ——
+    /// 用户报的「改了昵称别人看不到」就是这个原因。
+    ///
+    /// 之前全项目根本没用过 `scenePhase`。
+    @Environment(\.scenePhase) private var scenePhase
+
     /// 是否已经同意过服务条款。
     /// 用 AppStorage 存 —— 只问一次，之后不再打扰。
     @AppStorage("hasAcceptedLegalTerms") private var hasAcceptedTerms = false
@@ -224,6 +235,11 @@ struct RootView: View {
         // 用 .task { } 的话它只跑一次，用户登录完就再也不会同步了。
         //
         // 加上 id 之后，登录状态一变这个任务就会重跑。
+        // 切回前台 → 轻量刷新一次好友资料（昵称、头像色）
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, auth.isSignedIn else { return }
+            Task { await store.refreshFriends() }
+        }
         .task(id: auth.isSignedIn) {
             // 开发用开关
             if DevFlags.resetTerms { hasAcceptedTerms = false }

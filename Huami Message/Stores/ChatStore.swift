@@ -16,6 +16,25 @@ import SwiftUI
 /// 网络快就快一点补上，网络慢或者断了，界面照样能用。
 ///
 /// @Observable 是苹果现在的标准写法：数据一变，用到它的界面自动刷新。
+///
+/// 【为什么必须标 @MainActor】
+///
+/// 这是一个我查了很久的 bug 换来的：
+///
+/// **别人的昵称改了，界面永远不更新**（但数据库里其实是新名字）。
+///
+/// 原因：`@Observable` 只保证"属性变了会通知界面"，
+/// **但通知是从哪个线程发出来的，它管不着**。而 Swift 里
+/// `nonisolated` 的 async 方法被调用时**会跑到后台线程执行** ——
+/// 于是 `conversations = ...` 发生在后台，通知也发在后台，
+/// **SwiftUI 收到后不敢动界面**（它只在主线程更新）。
+///
+/// 表现极具迷惑性：**数据是对的，界面是旧的**。
+/// 查数据库会以为没问题，因为确实没问题 —— 错的是"通知"这一步。
+///
+/// 标上 @MainActor 之后，这个类里所有方法都在主线程跑，
+/// 这类问题从这里绝迹。所有给界面用的 store 都该这么写。
+@MainActor
 @Observable
 final class ChatStore {
 
@@ -102,6 +121,41 @@ final class ChatStore {
         // ── ③ 开始监听服务器推来的新消息 ──
         if !DevFlags.offline {
             listen()
+        }
+    }
+
+    /// 只刷新「好友资料」——昵称、头像色，不碰消息。
+    ///
+    /// 【为什么需要单独一个轻量刷新】
+    ///
+    /// 原来的同步只在 `start()` 里跑，而 `start()` 有一句
+    /// `guard conversations.isEmpty` —— 会话一旦读出来，就再也不会同步了。
+    ///
+    /// 后果：**别人改了昵称，你永远看不到**，除非杀掉 App 重开。
+    /// （用户就是这么报的："现在自己改的昵称，根本不在别人那里显示"。）
+    ///
+    /// 但也不能直接重跑完整的 `syncFromRemote()` ——
+    /// 那会为**每个好友**发一次"拉全部历史消息"的请求，
+    /// 好友一多，每次切回前台都要打十几个请求。
+    ///
+    /// 所以拆出这个：只查一次好友列表（里面已经带着各自的昵称和头像色），
+    /// 两个请求搞定，随时调都不心疼。
+    func refreshFriends() async {
+        guard !DevFlags.offline else { return }
+        do {
+            let remoteConversations = try await remote.loadConversations()
+            guard !remoteConversations.isEmpty else { return }
+
+            for convo in remoteConversations {
+                local.save(friend: convo.friend)
+            }
+            refreshFromLocal()
+            AppLog.info(.data, "好友资料已刷新（\(remoteConversations.count) 位）")
+        } catch {
+            // 刷新失败**不打扰用户** —— 他只是切了个前台，
+            // 弹一个"刷新失败"比不刷新还烦。名字旧一点没关系。
+            // （没登录时这里也会失败，正好一并挡掉。）
+            AppLog.error(.network, "刷新好友资料失败：\(error.localizedDescription)")
         }
     }
 

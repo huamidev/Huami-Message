@@ -338,6 +338,18 @@ class Handler(BaseHTTPRequestHandler):
             self._send(204 if "logout" in parsed.path else 200, None if "logout" in parsed.path else {})
             return
 
+        # ── 测试用：改某个人的昵称（模拟"对方改了名字"）──
+        # 只在假服务器上存在，真 Supabase 没有这个接口。
+        if parsed.path == "/dev/rename":
+            target = body.get("id")
+            if target in PROFILES:
+                PROFILES[target]["display_name"] = body.get("name")
+                print(f"    → 200 把 {target[:8]} 改名成 {body.get('name')}")
+                self._send(200, {"ok": True})
+            else:
+                self._send(404, {"message": "没有这个人"})
+            return
+
         # ── 发消息 ──
         if parsed.path == "/rest/v1/messages":
             me = self._me()
