@@ -651,6 +651,21 @@ struct ChatView: View {
         // 手指往下拖就把键盘收起来 —— iOS 上大家都习惯这个手势，
         // 少了它会被觉得「不是原生 App」
         .scrollDismissesKeyboard(.interactively)
+        // ── 点聊天区收起键盘 ──
+        //
+        // 用 simultaneousGesture 而不是 gesture：
+        // 后者会**抢走**子视图的点击（图片气泡点开大图、长按菜单都会失灵）。
+        // simultaneous 是"我听到了，但不拦着别人"。
+        //
+        // 收起键盘这里直接退第一响应者，而不是把 FocusState 传上来：
+        // 输入框那边有好几处用到焦点状态，为这一件事把状态提到父层，
+        // 改动面比收益大。这条是 UIKit 时代就有的标准写法。
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                to: nil, from: nil, for: nil)
+            }
+        )
         // 一进来就停在最新一条，而不是从最顶上开始。
         // 这一个小设置直接决定了「打开会话是不是顺手」。
         .defaultScrollAnchor(.bottom)
