@@ -161,6 +161,23 @@ final class MockChatService: ChatService {
             Message(id: Self.seedMessageID(5), friendID: linYi.id, text: "你昨天怎么没来？大家都等你很久了", sender: .friend, sentAt: ago(12)),
         ]
 
+        // 开发用：灌一批填充消息，用来测长列表
+        let extra = DevFlags.seedMany
+        if extra > 0 {
+            var filler: [Message] = []
+            for i in 0..<extra {
+                filler.append(Message(
+                    id: Self.seedMessageID(1000 + i),
+                    friendID: linYi.id,
+                    text: "填充消息 #\(i + 1) —— 用来测长列表的滚动和性能",
+                    sender: i % 2 == 0 ? .friend : .me,
+                    // 时间排在最老的那一批之前，别打乱原有演示数据
+                    sentAt: ago(2000 + Double(extra - i) * 400)
+                ))
+            }
+            messages[linYi.id] = filler + (messages[linYi.id] ?? [])
+        }
+
         // 陈叙：同事，说话比较公事
         messages[chenXu.id] = [
             Message(id: Self.seedMessageID(11), friendID: chenXu.id, text: "在忙吗", sender: .friend, sentAt: ago(150)),

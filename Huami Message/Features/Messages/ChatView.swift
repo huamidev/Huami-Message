@@ -30,6 +30,24 @@ struct ChatView: View {
     /// 滚动用的锚点。它不是给用户看的，只是给代码一个「滚到这里」的坐标。
     private let bottomAnchor = "bottom"
 
+    /// 顶部锚点。只有开发自检用得上（滚到最顶去验证长列表的行为）。
+    private let topAnchor = "top"
+
+    /// 用户现在是不是「贴着底部」。
+    ///
+    /// 【这个值解决一个真 bug】
+    /// 原来只要有新消息就无条件滚到底部。如果用户正在往上翻旧消息，
+    /// 就会被**猛地拽到最底下** —— 这在聊天 App 里很恼人：
+    /// 读长对话时根本没法往上翻，每来一条消息就被踢回来一次。
+    ///
+    /// Telegram 和微信都不这样：你往上翻着，它们就安静地待着，
+    /// 只在一个小按钮上提醒你「下面有几条新的」。
+    @State private var isNearBottom = true
+
+    /// 用户在往上翻的时候，又来了几条新消息。
+    /// 用来在「回到最新」按钮上显示数字。
+    @State private var unseenCount = 0
+
     private var messages: [Message] { store.messages(with: conversation.friend.id) }
 
     /// 加工成「带日期分隔条」的列表
@@ -39,31 +57,66 @@ struct ChatView: View {
     private var isBlocked: Bool { store.isBlocked(conversation.friend.id) }
 
     var body: some View {
+        // ScrollViewReader 包住整个页面（而不是只包消息列表），
+        // 是为了让**底部的「回到最新」按钮也能命令列表滚动** ——
+        // 它和列表不在同一层，拿不到里面的 proxy。
+        ScrollViewReader { proxy in
+            page(proxy: proxy)
+        }
+    }
+
+    private func page(proxy: ScrollViewProxy) -> some View {
         ZStack {
             // 聊天页是自己压栈进来的，不在 AppPage 里，
             // 所以这里也要单独铺一层背景，否则推入后背景会是系统默认色。
             AppBackground()
 
             ZStack(alignment: .bottom) {
-                messageList
+                messageList(proxy: proxy)
 
-                VStack(spacing: 6) {
-                    // ── 小助手的入口 ──
-                    // 悬浮在输入栏正上方、靠右。
-                    // 它不再是一个底部 Tab：一个"帮你看懂这段对话"的助手，
-                    // 就该待在对话发生的这个界面里，而不是让用户复制来复制去。
-                    HStack {
-                        Spacer()
-                        assistantButton
-                    }
-                    .padding(.horizontal, 18)
-
-                    ChatInputBar(
-                        text: $draft,
-                        onPolish: { polishRequest = PolishRequest(original: draft) },
-                        onSend: send
+                VStack(spacing: 0) {
+                    // ── 底部渐隐 ──
+                    // 让消息在接近输入栏时"淡淡地没掉"，而不是被一条硬边切断。
+                    // Telegram / 微信都是这么做的。
+                    LinearGradient(
+                        colors: [Theme.background.opacity(0), Theme.background],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
+                    .frame(height: 48)
+                    .allowsHitTesting(false)   // 别挡住手指滚动
+
+                    VStack(spacing: 6) {
+                        // ── 小助手的入口 ──
+                        // 悬浮在输入栏正上方、靠右。
+                        // 它不再是一个底部 Tab：一个"帮你看懂这段对话"的助手，
+                        // 就该待在对话发生的这个界面里，而不是让用户复制来复制去。
+                        HStack {
+                            // 只有用户往上翻的时候才出现 —— 平时不占地方、不抢注意力
+                            jumpToLatestButton(proxy: proxy)
+                            Spacer()
+                            assistantButton
+                        }
+                        .padding(.horizontal, 18)
+                        // 按钮的出现/消失要有动画，否则它会"啪"地跳出来，
+                        // 在一堆流畅的滚动里显得很突兀
+                        .animation(.snappy(duration: 0.22), value: isNearBottom)
+
+                        ChatInputBar(
+                            text: $draft,
+                            onPolish: { polishRequest = PolishRequest(original: draft) },
+                            onSend: send
+                        )
+                    }
                 }
+                // ── 把悬浮标签栏那一块也盖上 ──
+                //
+                // ⚠️ 这里必须用 background 的 ignoresSafeAreaEdges 参数，
+                //    **不能**靠 .ignoresSafeArea()。
+                //    我试过后者：在 ZStack 的底部对齐子视图里它根本不生效 ——
+                //    用红色探针量出来，渐隐层的底边老老实实停在安全区底边，
+                //    下面还有 74 磅露着消息。
+                .background(Theme.background, ignoresSafeAreaEdges: .bottom)
             }
         }
         .navigationTitle(conversation.friend.name)
@@ -110,6 +163,7 @@ struct ChatView: View {
         .confirmationDialog("清空和 \(conversation.friend.name) 的聊天记录？",
                             isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("清空聊天记录", role: .destructive) {
+                Haptics.warning()
                 withAnimation(.snappy) { store.clearMessages(with: conversation.friend.id) }
             }
             Button("取消", role: .cancel) {}
@@ -124,6 +178,17 @@ struct ChatView: View {
         //   -autoSend 1    自动发一条消息（配合 -failSend 1 可以验证失败和重试）
         // 正常启动都不会触发。
         .task {
+            // ── 打开会话时确保真的停在最新一条 ──
+            //
+            // ⚠️ 只靠 .defaultScrollAnchor(.bottom) 在长列表里会差一点点：
+            //    LazyVStack 一开始只"实现"了一部分内容，锚到底是按**当时**的
+            //    内容高度算的；随着更多内容被实现，总高度变大，位置就偏了 ——
+            //    表现是"打开一个长对话，最后两条看不见"（我在长列表自检里发现的）。
+            //    所以这里等布局稳定后再补一次，而且**不加动画**，
+            //    否则用户会看到打开瞬间画面"唰"地跳一下。
+            try? await Task.sleep(for: .milliseconds(280))
+            proxy.scrollTo(bottomAnchor, anchor: .bottom)
+
             if DevFlags.openPolish, draft.isEmpty {
                 // 用同一个常量同时喂给输入框和面板，避免"读回来的值不一样"
                 let demo = "你昨天怎么没来？大家都等你很久了，你这样不太好吧。"
@@ -155,6 +220,17 @@ struct ChatView: View {
                 store.deleteConversation(conversation.friend.id)
             }
 
+            // 开发自检：先滚到最顶，再发一条消息。
+            // 正确表现 = 画面**停在原地**，右下角出现「回到最新 ①」。
+            // 如果画面被拽到了底部，说明修复没生效。
+            if DevFlags.verifyScrollFix {
+                try? await Task.sleep(for: .milliseconds(600))
+                proxy.scrollTo(topAnchor, anchor: .top)   // 不加动画，立刻到位
+                try? await Task.sleep(for: .seconds(1))
+                await store.send("滚动自检 \(Date().formatted(date: .omitted, time: .standard))",
+                                 to: conversation.friend.id)
+            }
+
             if DevFlags.autoSend {
                 // 带上时间戳，这样重启后能一眼认出"这条是上一次发的"，
                 // 用来验证消息真的存进了本地数据库。
@@ -172,6 +248,8 @@ struct ChatView: View {
     private var manageMenu: some View {
         Menu {
             Button {
+                // 拉黑是"重"动作，用警告震动，和轻点的发送明确区分开
+                Haptics.warning()
                 withAnimation(.snappy) {
                     store.setBlocked(!isBlocked, for: conversation.friend.id)
                 }
@@ -265,58 +343,125 @@ struct ChatView: View {
 
     // MARK: - 消息列表
 
-    private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(items) { item in
-                        switch item {
-                        case .daySeparator(let date):
-                            DaySeparatorView(date: date)
-                                .id(item.id)
+    private func messageList(proxy: ScrollViewProxy) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                // 看不见的顶部锚点（开发自检用来滚到最顶上）
+                Color.clear.frame(height: 1).id(topAnchor)
 
-                        case .message(let message):
-                            MessageBubble(
-                                message: message,
-                                onRetry: { Task { await store.retry(message) } },
-                                onDelete: {
-                                    withAnimation(.snappy) { store.deleteMessage(message) }
-                                }
-                            )
+                ForEach(items) { item in
+                    switch item {
+                    case .daySeparator(let date):
+                        DaySeparatorView(date: date)
                             .id(item.id)
-                        }
+
+                    case .message(let message):
+                        MessageBubble(
+                            message: message,
+                            onRetry: { Task { await store.retry(message) } },
+                            onDelete: {
+                                Haptics.warning()
+                                withAnimation(.snappy) { store.deleteMessage(message) }
+                            }
+                        )
+                        .id(item.id)
                     }
-
-                    // 一个看不见的锚点。滚到它 = 滚到最底部。
-                    Color.clear.frame(height: 1).id(bottomAnchor)
-
-                    // 给悬浮的输入栏和小助手按钮留出空间，
-                    // 否则最后一条消息会被它们盖住
-                    Color.clear.frame(height: 130)
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
+
+                // 一个看不见的锚点。滚到它 = 滚到最底部。
+                Color.clear.frame(height: 1).id(bottomAnchor)
+
+                // 给悬浮的输入栏和小助手按钮留出空间，
+                // 否则最后一条消息会被它们盖住
+                Color.clear.frame(height: 130)
             }
-            .scrollIndicators(.hidden)
-            // 手指往下拖就把键盘收起来 —— iOS 上大家都习惯这个手势，
-            // 少了它会被觉得「不是原生 App」
-            .scrollDismissesKeyboard(.interactively)
-            // 一进来就停在最新一条，而不是从最顶上开始。
-            // 这一个小设置直接决定了「打开会话是不是顺手」。
-            .defaultScrollAnchor(.bottom)
-            .onChange(of: messages.count) { _, _ in
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            // 让新消息真正「弹」进来。
+            //
+            // ⚠️ MessageBubble 里写了 .transition，但**只定义 transition
+            //    而没有动画驱动，等于没写** —— 它一直没生效过。
+            //    必须有一个 .animation(_:value:)（或包在 withAnimation 里）
+            //    才会真的播出来。这一行就是那个"驱动"。
+            .animation(.snappy(duration: 0.26), value: messages.count)
+        }
+        .scrollIndicators(.hidden)
+        // 手指往下拖就把键盘收起来 —— iOS 上大家都习惯这个手势，
+        // 少了它会被觉得「不是原生 App」
+        .scrollDismissesKeyboard(.interactively)
+        // 一进来就停在最新一条，而不是从最顶上开始。
+        // 这一个小设置直接决定了「打开会话是不是顺手」。
+        .defaultScrollAnchor(.bottom)
+        // 实时知道用户是不是贴着底部。
+        // onScrollGeometryChange 是 iOS 18 的新能力，能在滚动过程中读到
+        // 内容尺寸和当前可视区域 —— 这是实现"别把用户拽走"的关键信息。
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            // 距离底部 140 磅以内就算「贴着底部」。
+            // 留这段余量，是因为列表末尾有一段专门给输入栏的空白。
+            geometry.contentSize.height - geometry.visibleRect.maxY < 140
+        } action: { _, nearBottom in
+            isNearBottom = nearBottom
+            // 一旦回到最底下，新消息就算都看过了
+            if nearBottom { unseenCount = 0 }
+        }
+        .onChange(of: messages.count) { oldCount, newCount in
+            if isNearBottom {
+                withAnimation(.snappy(duration: 0.32)) {
+                    proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                }
+            } else {
+                // 用户正在读旧消息 —— 只记个数，绝不动他的位置
+                unseenCount += max(0, newCount - oldCount)
+            }
+        }
+        // 拉黑提示条出现/消失时，聊天区域的高度会变。
+        // 不重新对齐的话，最后一条消息会被输入栏挡住 —— 这个细节很小，
+        // 但"最后一条看不见"是用户一眼就能察觉的毛病。
+        .onChange(of: isBlocked) { _, _ in
+            withAnimation(.snappy(duration: 0.3)) {
+                proxy.scrollTo(bottomAnchor, anchor: .bottom)
+            }
+        }
+    }
+
+    // MARK: - 「回到最新」
+
+    /// 只在用户往上翻旧消息时出现的按钮。
+    ///
+    /// 带一个数字，告诉他下面还压着几条没看。
+    /// 这件小事让「往上翻」变成一个**安全的动作**：
+    /// 你知道新消息不会跑掉，界面也不会把你踢回去。
+    @ViewBuilder
+    private func jumpToLatestButton(proxy: ScrollViewProxy) -> some View {
+        if !isNearBottom {
+            Button {
+                Haptics.tap()
                 withAnimation(.snappy(duration: 0.35)) {
                     proxy.scrollTo(bottomAnchor, anchor: .bottom)
                 }
-            }
-            // 拉黑提示条出现/消失时，聊天区域的高度会变。
-            // 不重新对齐的话，最后一条消息会被输入栏挡住 —— 这个细节很小，
-            // 但"最后一条看不见"是用户一眼就能察觉的毛病。
-            .onChange(of: isBlocked) { _, _ in
-                withAnimation(.snappy(duration: 0.3)) {
-                    proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                unseenCount = 0
+            } label: {
+                HStack(spacing: 5) {
+                    if unseenCount > 0 {
+                        Text("\(unseenCount)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.accent, in: Capsule())
+                    }
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Theme.surface, in: Capsule())
+                .overlay { Capsule().strokeBorder(Theme.separator, lineWidth: 0.5) }
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
             }
+            .buttonStyle(.plain)
+            .transition(.scale(scale: 0.7).combined(with: .opacity))
         }
     }
 
@@ -325,6 +470,11 @@ struct ChatView: View {
     private func send() {
         let text = draft
         let style = polishedWith
+
+        // 按下发送的那一下给一个轻震。
+        // 这是"手感"里最便宜也最有效的一环 —— 用户注意不到它，
+        // 但少了它，界面会显得"飘"。
+        Haptics.tap()
 
         // ① 立刻清空输入框 —— 不等网络。
         draft = ""

@@ -149,6 +149,9 @@ struct PolishSheet: View {
             // 半成品不能选 —— 否则用户会点到一个只写了一半的版本。
             if done {
                 Button {
+                    // 选中变化用 selection 震动 —— 比 impact 更"细"，
+                    // 适合"在几个选项里挑一个"这种动作
+                    Haptics.selection()
                     onPick(text, style)
                     dismiss()
                 } label: {

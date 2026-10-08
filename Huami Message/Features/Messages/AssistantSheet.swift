@@ -201,6 +201,7 @@ struct AssistantSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     Button {
+                        Haptics.selection()
                         // 只填回输入框，不自动发送。
                         // 发消息是不可撤销的动作，决定权必须留给人。
                         onUseReply(text)
@@ -245,6 +246,7 @@ struct AssistantSheet: View {
                     }
                 }
             }
+            if !Task.isCancelled { Haptics.success() }
             isThinking = false
         }
     }

@@ -43,6 +43,20 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "assistantGo")
     }
 
+    /// 给第一个好友灌多少条填充消息。
+    /// 用来测**长列表的滚动和性能** —— 5 条消息的列表是测不出问题的。
+    static var seedMany: Int {
+        UserDefaults.standard.integer(forKey: "seedMany")
+    }
+
+    /// 自检场景：滚到最顶部，然后再发一条消息。
+    ///
+    /// 用来验证「新消息不会把正在往上翻的用户拽到底部」这个修复 ——
+    /// 正确表现是：**画面停在原地**，右下角出现一个带数字的「回到最新」。
+    static var verifyScrollFix: Bool {
+        UserDefaults.standard.bool(forKey: "verifyScrollFix")
+    }
+
     /// **完全离线**：跳过一切网络请求，只用本地数据库。
     ///
     /// 这个开关不是玩具，它是用来**证明**「打开 App 瞬间就能操作」的：

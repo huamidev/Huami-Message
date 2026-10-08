@@ -174,6 +174,7 @@ struct ReportSheet: View {
 
     private var submitButton: some View {
         Button {
+            Haptics.warning()
             onSubmit(reason, note.trimmingCharacters(in: .whitespacesAndNewlines))
             dismiss()
         } label: {
