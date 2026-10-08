@@ -21,6 +21,12 @@ struct ChatView: View {
     @State private var showReportSheet = false
     @State private var showClearConfirm = false
 
+    /// 要交给小助手的上下文。
+    /// 和润色一样用 `.sheet(item:)` 而不是 `.sheet(isPresented:)` ——
+    /// 要发给弹窗的数据，必须和"打开弹窗"这个动作绑在一起，
+    /// 不能让弹窗自己在某个时刻去读外面的状态（那个坑我踩过。）
+    @State private var assistantRequest: AssistantRequest?
+
     /// 滚动用的锚点。它不是给用户看的，只是给代码一个「滚到这里」的坐标。
     private let bottomAnchor = "bottom"
 
@@ -35,17 +41,29 @@ struct ChatView: View {
     var body: some View {
         ZStack {
             // 聊天页是自己压栈进来的，不在 AppPage 里，
-            // 所以这里也要单独铺一层极光背景，否则推入后背景会变黑。
+            // 所以这里也要单独铺一层背景，否则推入后背景会是系统默认色。
             AppBackground()
 
             ZStack(alignment: .bottom) {
                 messageList
 
-                ChatInputBar(
-                    text: $draft,
-                    onPolish: { polishRequest = PolishRequest(original: draft) },
-                    onSend: send
-                )
+                VStack(spacing: 6) {
+                    // ── 小助手的入口 ──
+                    // 悬浮在输入栏正上方、靠右。
+                    // 它不再是一个底部 Tab：一个"帮你看懂这段对话"的助手，
+                    // 就该待在对话发生的这个界面里，而不是让用户复制来复制去。
+                    HStack {
+                        Spacer()
+                        assistantButton
+                    }
+                    .padding(.horizontal, 18)
+
+                    ChatInputBar(
+                        text: $draft,
+                        onPolish: { polishRequest = PolishRequest(original: draft) },
+                        onSend: send
+                    )
+                }
             }
         }
         .navigationTitle(conversation.friend.name)
@@ -76,6 +94,15 @@ struct ChatView: View {
             ReportSheet(friend: conversation.friend) { reason, note in
                 store.report(conversation.friend.id, reason: reason, note: note)
             }
+            .presentationBackground(Theme.surface)
+            .presentationCornerRadius(30)
+        }
+        .sheet(item: $assistantRequest) { request in
+            AssistantSheet(context: request.context) { reply in
+                // 和润色一样：只填回输入框，不自动发送。
+                draft = reply
+            }
+            .presentationDetents([.large])
             .presentationBackground(Theme.surface)
             .presentationCornerRadius(30)
         }
@@ -110,6 +137,15 @@ struct ChatView: View {
 
             if DevFlags.openReport {
                 showReportSheet = true
+            }
+
+            if DevFlags.openAssistant {
+                assistantRequest = AssistantRequest(
+                    context: store.assistantContext(
+                        for: conversation.friend.id,
+                        friendName: conversation.friend.name
+                    )
+                )
             }
 
             // 危险操作的自检：删除整个会话。
@@ -189,6 +225,40 @@ struct ChatView: View {
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 
+    // MARK: - 小助手的入口
+
+    /// 悬浮的小助手按钮。
+    ///
+    /// 为什么是一个带字的小胶囊，而不是一个纯图标按钮：
+    /// 它和输入栏左边那个 ✨（润色）**功能完全不同** ——
+    /// 一个改你打的这句话，一个帮你想整件事该怎么办。
+    /// 两个图标长得一样、又挨得近，用户一定会搞混。
+    /// 写上「小助手」三个字，这个歧义就没了。
+    private var assistantButton: some View {
+        Button {
+            assistantRequest = AssistantRequest(
+                context: store.assistantContext(
+                    for: conversation.friend.id,
+                    friendName: conversation.friend.name
+                )
+            )
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("小助手")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(Theme.accent)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .background(Theme.surface, in: Capsule())
+            .overlay { Capsule().strokeBorder(Theme.separator, lineWidth: 0.5) }
+            .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - 消息列表
 
     private var messageList: some View {
@@ -216,8 +286,9 @@ struct ChatView: View {
                     // 一个看不见的锚点。滚到它 = 滚到最底部。
                     Color.clear.frame(height: 1).id(bottomAnchor)
 
-                    // 给悬浮的输入栏留出空间，否则最后一条消息会被它盖住
-                    Color.clear.frame(height: 84)
+                    // 给悬浮的输入栏和小助手按钮留出空间，
+                    // 否则最后一条消息会被它们盖住
+                    Color.clear.frame(height: 130)
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
@@ -278,4 +349,11 @@ struct ChatView: View {
 struct PolishRequest: Identifiable {
     let id = UUID()
     let original: String
+}
+
+/// 交给小助手的上下文 + 弹窗开关，打包成一个整体。
+/// 理由和上面的 PolishRequest 完全一样。
+struct AssistantRequest: Identifiable {
+    let id = UUID()
+    let context: AssistantContext
 }

@@ -4,8 +4,8 @@ import Foundation
 ///
 /// 用法是在启动 App 时带上参数，例如：
 ///
-///     xcrun simctl launch booted com.huamidev.HuamiMessage -startTab advisor
-///     xcrun simctl launch booted com.huamidev.HuamiMessage -openChat 1 -openPolish 1
+///     xcrun simctl launch booted com.huamidev.HuamiMessage -startTab profile
+///     xcrun simctl launch booted com.huamidev.HuamiMessage -openChat 1 -openAssistant 1
 ///     xcrun simctl launch booted com.huamidev.HuamiMessage -offline 1
 ///
 /// 原理：`-名字 值` 形式的启动参数会被系统自动读进 UserDefaults，
@@ -17,7 +17,7 @@ import Foundation
 ///    这就是「把临时东西关进一个笼子里」的做法。
 enum DevFlags {
 
-    /// 启动时直接显示哪个 Tab：messages / advisor / profile
+    /// 启动时直接显示哪个 Tab：messages / profile
     static var startTab: String {
         UserDefaults.standard.string(forKey: "startTab") ?? "messages"
     }
@@ -30,6 +30,17 @@ enum DevFlags {
     /// 进入会话后自动打开 AI 润色面板（方便看润色交互）
     static var openPolish: Bool {
         UserDefaults.standard.bool(forKey: "openPolish")
+    }
+
+    /// 进入会话后自动打开小助手（方便看助手的流式分析 + 建议）
+    static var openAssistant: Bool {
+        UserDefaults.standard.bool(forKey: "openAssistant")
+    }
+
+    /// 打开小助手后**自动**开始分析（省掉手动点"帮我看看"这一步）。
+    /// 纯粹为了能截图/测到流式分析和建议卡片。
+    static var assistantGo: Bool {
+        UserDefaults.standard.bool(forKey: "assistantGo")
     }
 
     /// **完全离线**：跳过一切网络请求，只用本地数据库。

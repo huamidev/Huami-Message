@@ -138,7 +138,7 @@ final class MockChatService: ChatService {
     }
 
     /// 造一份像样的假数据。
-    /// 数据故意做得「有故事」：林一那句是留给「军师」演示用的。
+    /// 数据故意做得「有故事」：林一那句是留给「小助手」演示用的。
     private func seed() {
         let linYi   = Friend(id: Self.friendID(1), name: "林一", avatarSeed: 0)
         let chenXu  = Friend(id: Self.friendID(2), name: "陈叙", avatarSeed: 1)

@@ -249,6 +249,21 @@ final class ChatStore {
         local.reports(for: friendID).count
     }
 
+    // MARK: - 小助手
+
+    /// 构造交给小助手的上下文。
+    ///
+    /// 两件事刻意收在这里，而不是让界面自己拼：
+    ///   1. **只取最近若干条**（见 AssistantContext.recentLimit）——
+    ///      判断"对方这句话什么意思"根本用不着三个月的聊天记录。
+    ///      能少发就少发，这是处理别人聊天内容时该有的自觉。
+    ///   2. 上下文由数据层统一提供，以后要加"排除已删除消息"之类的规则，
+    ///      只改这一处。
+    func assistantContext(for friendID: Friend.ID, friendName: String) -> AssistantContext {
+        let recent = messages(with: friendID).suffix(AssistantContext.recentLimit)
+        return AssistantContext(friendName: friendName, messages: Array(recent))
+    }
+
     // MARK: - 未读
 
     /// 进入某个会话时清掉未读小红点

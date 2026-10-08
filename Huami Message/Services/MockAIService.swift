@@ -1,14 +1,16 @@
 import Foundation
 
-/// 假数据版的 AI 服务 —— 第 0 步专用。
+/// 假数据版的 AI 服务 —— 接真 AI 之前都用它。
 ///
 /// ⚠️ 说清楚：它**不是真的 AI**，只是把预先写好的文字按节奏一段段吐出来。
 /// 目的是让我们先把「流式输出」的手感调好（速度、光标、停顿），
 /// 因为这部分体验和用哪家 AI 完全无关。
 ///
-/// 等第 2 步接入 DeepSeek 时，只换掉这个文件，
+/// 等接入 DeepSeek 时，只换掉这个文件，
 /// 界面和 ChatStore 一行都不用改 —— 因为大家都在 AIService 这个插座标准上。
 final class MockAIService: AIService {
+
+    // MARK: 模块一：润色（只看一句话）
 
     func polish(_ text: String, style: PolishStyle) -> AsyncStream<String> {
         // 演示用的三个版本。故意做得风格差异明显，好让你看清三种模式的区别。
@@ -21,42 +23,45 @@ final class MockAIService: AIService {
         return Self.stream(demo[style] ?? "", chunk: 1, interval: .milliseconds(45))
     }
 
-    func advise(_ situation: String) -> AsyncStream<String> {
-        // 把你贴的原话引一句，让它读起来像是真的在回应你
-        let quoted = situation
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .prefix(40)
+    // MARK: 模块二：小助手（看整段对话）
 
-        let text = """
-        先别急着解释。你贴的是「\(quoted)」。
+    func advise(context: AssistantContext) -> AsyncStream<AssistantEvent> {
+        let name = context.friendName
+        let quoted = String((context.lastFriendMessage?.text ?? "").prefix(24))
 
-        这句话表面在问你为什么没来，底下其实压着两件事：
+        // 分析部分。
+        // 刻意写得像"人话"，而且真的引用了对方最后那句话 ——
+        // 这样你看着能判断这个交互对不对，而不是对着一堆废话找不到感觉。
+        let analysis = """
+        先别急着解释。\(name)最后那句是「\(quoted)」，重点其实不在字面上。
 
-        一是「我为你留了时间，你没出现」—— 这是失望。
-        二是「大家都等你」—— 这是把压力从一个人变成了一群人。
+        这句话底下压着两件事：一是「我为你留了时间，你没出现」—— 这是失望；
+        二是把压力从一个人变成了一群人 —— 这是让你不好反驳。
 
         所以他真正想听的不是理由，而是「我知道这件事对你重要」。
-
-        给你三个方向：
-
-        ① 先认情绪，再讲事实
-           「抱歉，昨天确实没到。我知道你们等了很久，这事是我不对。」
-           原因放在后面说。情绪先接住，理由才听得进去。
-
-        ② 如果原因不方便细说
-           「昨天临时出了点事走不开，没来得及跟你们讲，对不起。」
-           不必编细节，说得过去就行。
-
-        ③ 如果你们关系够近，可以先反问
-           「等我很久了吧？昨天实在脱不开身。」
-
-        要避开的一种回法：
-           「我不是说了吗」／「你也知道我最近很忙」
-           —— 哪怕是真的，这句话一出去，对方听到的是「你的时间没我的重要」。
+        顺序很关键：**先接住情绪，再讲事实**。反过来就一定吵起来。
         """
-        // 一次吐 3 个字，20 毫秒一次 —— 比润色快一些，
-        // 因为这段文字长，太慢会让用户等得心焦
-        return Self.stream(text, chunk: 3, interval: .milliseconds(20))
+
+        // 三条可以直接用的回复
+        let suggestions = [
+            "抱歉，昨天确实没到。我知道你们等了很久，这事是我不对。",
+            "昨天临时出了点事走不开，没来得及跟你们讲，对不起。",
+            "等我很久了吧？昨天实在脱不开身，回头我请你们吃饭赔罪。",
+        ]
+
+        return AsyncStream { continuation in
+            let task = Task {
+                // 先流式吐分析
+                for await chunk in Self.stream(analysis, chunk: 3, interval: .milliseconds(18)) {
+                    if Task.isCancelled { break }
+                    continuation.yield(.analysis(chunk))
+                }
+                // 分析吐完了，再一次性给建议
+                continuation.yield(.suggestions(suggestions))
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     // MARK: - 流式输出的引擎
