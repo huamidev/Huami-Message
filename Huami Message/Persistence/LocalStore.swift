@@ -83,6 +83,20 @@ protocol LocalStore: AnyObject {
     /// 一句话：**墓碑是"我不想再见到他"，不是"他在服务器上没了"。**
     func forgetFriend(friendID: Friend.ID)
 
+    /// 清掉某个好友的"墓碑"。
+    ///
+    /// 【什么时候需要它 —— 一个真实的 bug】
+    ///
+    /// 用户删掉一个好友时，本地会记一笔"我不想再见到他"（墓碑），
+    /// 作用是**挡住同步把他拉回来**。
+    ///
+    /// 但**"同意他的好友申请"本身就是一次新的同意** ——
+    /// 墓碑必须清掉，否则会出现：他申请我、我点了同意、服务器上已经是好友了，
+    /// 而我这边**列表里还是空的**（本地那一步被墓碑挡住）。
+    ///
+    /// 用户看到的就是"点了同意，和没加一样"。
+    func clearTombstone(friendID: Friend.ID)
+
     /// 只清空聊天记录，保留好友
     func clearMessages(with friendID: Friend.ID)
 
@@ -314,6 +328,14 @@ final class SwiftDataLocalStore: LocalStore {
     }
 
     // MARK: 删除与拉黑
+
+    func clearTombstone(friendID: Friend.ID) {
+        for tombstone in fetchAll(StoredTombstone.self)
+        where tombstone.targetID == friendID {
+            context.delete(tombstone)
+        }
+        commit()
+    }
 
     func forgetFriend(friendID: Friend.ID) {
         // 和 deleteConversation 同样的删除顺序（先消息后好友），

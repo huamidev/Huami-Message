@@ -167,6 +167,15 @@ final class ChatStore {
         guard !DevFlags.offline else { return }
         do {
             let remoteConversations = try await remote.loadConversations()
+
+            // ⚠️ 这句日志在 guard **之前**。
+            //
+            // 否则"服务器返回 0 位"这种情况会在下一行直接 return，
+            // 一行日志都不打 —— 看起来和"根本没刷新"一模一样，
+            // 而这两种情况的排查方向完全相反：
+            //   服务器返回 0  → 好友关系没建上（服务端问题）
+            //   服务器返回 1  → 建上了，是本地没存进去（墓碑之类）
+            AppLog.info(.data, "服务器返回 \(remoteConversations.count) 位好友")
             guard !remoteConversations.isEmpty else { return }
 
             for convo in remoteConversations {
@@ -410,6 +419,16 @@ final class ChatStore {
         incomingRequests.removeAll { $0.id == request.id }
 
         if accept {
+            // ⚠️ **先清墓碑，再拉好友列表。**
+            //
+            // 用户可能之前删过这个人（本地留了墓碑"我不想再见到他"），
+            // 而"同意他的申请"就是一次新的同意 —— 墓不懂得这件事，
+            // 会把接下来那次同步挡掉。
+            //
+            // 现象：点了同意，服务器上已经是好友了，我这边列表还是空的，
+            // 看起来"和没加一样"。用户报的就是这个。
+            local.clearTombstone(friendID: request.fromID)
+
             // 同意了就把好友列表拉一次，他才会出现在消息列表里
             await refreshFriends()
         }
