@@ -42,12 +42,32 @@ final class VoiceRecorder {
     static let maximumSeconds: Double = 60
 
     /// 开始录。返回 false 表示没拿到权限。
+    ///
+    /// 【为什么把界面反馈放在最前面 —— 一个真实的卡顿】
+    ///
+    /// 原来是"权限 → 音频会话 → 录音器 → 全部成功后才置 isRecording"。
+    /// 而**激活音频会话本身就要一两百毫秒**，用户按住之后
+    /// 先卡一下才看到提示条（用户报的"按住好像会卡一下，不是很及时"）。
+    ///
+    /// 现在改成：**先把"正在录"点亮**（同步、立刻），
+    /// 再去准备真正的录音。准备失败就把界面收回去并报错。
+    ///
+    /// 代价是"正在录"可能短暂地是个乐观状态 —— 但人耳听到的是
+    /// 按键的即时反馈，而几十毫秒的空档没人听得出来。
     func start() async -> Bool {
         guard !isRecording else { return true }
 
+        // ① 同步点亮界面 —— 一个 await 都不要有
+        isRecording = true
+        seconds = 0
+        Haptics.tap()
+        startTimer()
+
+        // ② 再去准备真正的录音
         let allowed = await AVAudioApplication.requestRecordPermission()
         guard allowed else {
             AppLog.error(.network, "麦克风权限没拿到")
+            stopQuietly()          // 把乐观状态收回去，不能停在假的"正在录"
             return false
         }
 
@@ -59,6 +79,7 @@ final class VoiceRecorder {
             try session.setActive(true)
         } catch {
             AppLog.error(.network, "录音会话起不来：\(error.localizedDescription)")
+            stopQuietly()
             return false
         }
 
@@ -79,14 +100,26 @@ final class VoiceRecorder {
             self.recorder = recorder
         } catch {
             AppLog.error(.network, "录音起不来：\(error.localizedDescription)")
+            stopQuietly()
             return false
         }
 
-        isRecording = true
-        seconds = 0
-        Haptics.tap()
+        return true
+    }
 
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+    /// 计时器。
+    ///
+    /// ⚠️ **必须用 RunLoop.main.add(_, forMode: .common)。**
+    ///
+    /// 原来用的是 `Timer.scheduledTimer` —— 它加在 **default 模式**上。
+    /// 而**手指按住屏幕的时候，主 runloop 处于 tracking 模式**，
+    /// default 模式下的计时器根本不会触发：提示条上的秒数就停在那儿不动
+    ///（这是"按住会卡一下"的第二个原因，也是最像"卡住"的那个）。
+    ///
+    /// .common 模式包含 tracking，所以按住期间照常走。
+    private func startTimer() {
+        timer?.invalidate()
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.isRecording else { return }
                 self.seconds += 0.1
@@ -94,7 +127,15 @@ final class VoiceRecorder {
                 if self.seconds >= Self.maximumSeconds { _ = self.finish() }
             }
         }
-        return true
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    /// 把乐观点亮的界面收回去（准备失败时用），不发声。
+    private func stopQuietly() {
+        recorder?.stop()
+        if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
+        cleanup()
     }
 
     /// 结束并返回（音频数据, 时长）。太短或没录成返回 nil。
