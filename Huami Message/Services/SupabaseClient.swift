@@ -319,7 +319,15 @@ enum SupabaseError: LocalizedError {
             case 429:
                 "操作太频繁，等一分钟再试。"
             case 500...599:
-                "服务器出错了，稍后再试。"
+                // ⚠️ **必须带上服务器的原话。**
+                //
+                // 500 不代表"服务器挂了"这么笼统 —— Supabase 很多时候是在
+                // 说具体的事，比如 "Error sending confirmation email"
+                //（发确认邮件失败，多半是 SMTP 配置或发信域名的问题）。
+                //
+                // 我原来把它统一成"服务器出错了，稍后再试"，
+                // 等于把唯一的线索删掉了。
+                message.isEmpty ? "服务器出错了，稍后再试。" : "服务器出错了：\(message)"
             default:
                 "出错了（\(status)）：\(message)"
             }

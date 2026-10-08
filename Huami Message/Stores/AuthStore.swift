@@ -88,8 +88,19 @@ final class AuthStore {
 
     /// 把任意错误翻译成一句能给用户看的话
     private func describe(_ error: Error) -> String {
-        if let authError = error as? AuthError {
-            return authError.errorDescription ?? "出了点问题，再试一次。"
+        // 【为什么第一件事是"用它自己的说明"】
+        //
+        // AuthError 和 SupabaseError 都实现了 LocalizedError ——
+        // 也就是说它们**自带一句给人看的中文说明**，甚至带着服务器的原话。
+        //
+        // 我原来的写法只认 AuthError，于是所有 SupabaseError 都被吞成了
+        // "出了点问题，再试一次。" —— 一句没有任何信息量的废话。
+        //
+        // 这个 bug 的代价很大：用户注册失败时，真正的原因
+        //（比如"发确认邮件失败"）明明就在错误对象里，我们却把它扔了。
+        if let described = (error as? LocalizedError)?.errorDescription,
+           !described.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return described
         }
         if (error as NSError).domain == NSURLErrorDomain {
             return AuthError.network.errorDescription ?? "网络好像不太顺，等一下再试。"
