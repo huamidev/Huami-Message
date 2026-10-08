@@ -58,6 +58,9 @@ create policy "friend_requests send as self"
 -- ----------------------------------------------------------------------------
 -- 2. 发申请
 -- ----------------------------------------------------------------------------
+--
+-- 注意：**发申请不建立好友关系。**
+-- 只有对方同意时才建立（见下面 respond_friend_request）。
 
 create or replace function public.send_friend_request(target_username text, note text default null)
 returns uuid
@@ -118,17 +121,15 @@ begin
     values (me, target_id, nullif(trim(coalesce(note, '')), ''))
     returning id into request_id;
 
-    -- 双方自动建立好友关系（否则从没申请过我们的用户，库里会缺一行）
-    insert into public.profiles (id, display_name, username)
-    select p.id, coalesce(p.display_name, '我'), p.username
-    from public.profiles p where p.id in (me, target_id)
-    on conflict (id) do nothing;
-
-    -- 发申请者直接建"我→他"的好友关系
-    insert into public.friendships (user_id, friend_id)
-    values (me, target_id)
-    on conflict do nothing;
-
+    -- ⚠️ 这里**不建好友关系**。
+    //
+    -- 我第一版写了「发申请时就建立我→他的好友关系」，那是错的：
+    //   · 申请还没被同意，他就出现在我的好友列表里了
+    //   · 更糟的是我这边看起来"加上了"，而对方永远没同意 ——
+    //     用户会以为对方收到了并且默认算好友
+    //
+    // **好友关系只在"同意"那一刻建立**（见 respond_friend_request）。
+    -- 发出去之后，我这边只应该看到"申请已发出"。
     return request_id;
 end;
 $$;
