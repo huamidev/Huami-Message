@@ -371,6 +371,21 @@ final class ChatStore {
         }
     }
 
+    /// 把发送失败的原因变成一句能看的日志。
+    ///
+    /// 尽量把服务器原话带出来 —— 这一层的信息量最大：
+    /// "column messages.audio_url does not exist" 这种话，
+    /// 一眼就知道要跑哪句 SQL，而"发送失败"四个字什么都说明不了。
+    private func describeSendError(_ error: Error) -> String {
+        if let supabase = error as? SupabaseError {
+            if let description = supabase.errorDescription { return description }
+        }
+        if let localized = error as? LocalizedError, let description = localized.errorDescription {
+            return description
+        }
+        return String(describing: error)
+    }
+
     /// 用户在界面上点了"重试"
     func retry(_ message: Message) async {
         var retrying = message
@@ -400,6 +415,17 @@ final class ChatStore {
             persist(delivered)
             replace(message.id, in: message.friendID, with: delivered)
         } catch {
+            // ⚠️ **必须把原因打出来。**
+            //
+            // 这里原来只把状态标成 .failed，界面上显示"发送失败，重试" ——
+            // 但**为什么不失败**（原文：为什么失败）一个字都没有：
+            // 是没登录（401）？参数不对（400）？列不存在？网络断了？
+            // 用户看到的那句话对排查毫无用处，只能靠猜。
+            //
+            // 一个只显示"失败了"却不显示"为什么"的错误处理，
+            // 等于把问题藏起来。
+            AppLog.error(.network, "发消息失败：\(describeSendError(error))")
+
             // 失败了也不能"假装成功"。标记成失败，界面上会出现一个可以点的重试按钮。
             var failed = message
             failed.status = .failed
