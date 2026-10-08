@@ -172,6 +172,7 @@ final class ChatStore {
             for convo in remoteConversations {
                 local.save(friend: convo.friend)
             }
+            dropFriendsMissingOnServer(Set(remoteConversations.map { $0.friend.id }))
             refreshFromLocal()
             AppLog.info(.data, "好友资料已刷新（\(remoteConversations.count) 位）")
         } catch {
@@ -179,6 +180,30 @@ final class ChatStore {
             // 弹一个"刷新失败"比不刷新还烦。名字旧一点没关系。
             // （没登录时这里也会失败，正好一并挡掉。）
             AppLog.error(.network, "刷新好友资料失败：\(error.localizedDescription)")
+        }
+    }
+
+    /// 服务器上已经不存在的好友，本地也清掉。
+    ///
+    /// 【为什么必须有这一步 —— 一个真实的 bug】
+    ///
+    /// 原来的同步只会"把服务器上的好友补进本地"，
+    /// **从来不会删掉服务器上已经没有的**。
+    ///
+    /// 后果：A 把 B 删掉之后，**B 那台手机上 B 永远还看得到 A** ——
+    /// 因为那台手机没有任何一步会去删他。用户报的就是这个。
+    ///
+    /// 这是"只做加法不做减法"的典型翻车：
+    /// 写同步逻辑时一定要问自己**对面少了什么**，不能只看多了什么。
+    ///
+    /// 用 `forgetFriend`（不留墓碑）：万一日后又加回好友，
+    /// 历史消息还能从服务器同步回来。
+    private func dropFriendsMissingOnServer(_ serverIDs: Set<Friend.ID>) {
+        for id in conversations.map({ $0.friend.id }) where !serverIDs.contains(id) {
+            local.forgetFriend(friendID: id)
+            conversations.removeAll { $0.friend.id == id }
+            messagesByFriend[id] = nil
+            AppLog.info(.data, "服务器上已经没有这位好友，本地也清掉：\(id.uuidString.prefix(8))")
         }
     }
 
@@ -190,6 +215,7 @@ final class ChatStore {
         let watch = Stopwatch()
         do {
             let remoteConversations = try await remote.loadConversations()
+            dropFriendsMissingOnServer(Set(remoteConversations.map { $0.friend.id }))
 
             for convo in remoteConversations {
                 local.save(friend: convo.friend)

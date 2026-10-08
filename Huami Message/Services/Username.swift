@@ -19,7 +19,7 @@ import Foundation
 enum Username {
 
     static let minLength = 5
-    static let maxLength = 20
+    static let maxLength = 15
 
     /// 把用户输入收拾成"该有的样子"。
     ///

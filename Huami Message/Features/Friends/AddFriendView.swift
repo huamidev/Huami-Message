@@ -150,11 +150,13 @@ struct AddFriendView: View {
                     .submitLabel(.go)
                     .onSubmit { add() }
                     .onChange(of: inputCode) { _, newValue in
-                        // 只留字母数字、强制大写、最多 8 位。
-                        // 在输入的时候就挡住，比在点按钮之后报错友好得多。
-                        let cleaned = newValue.uppercased().filter { $0.isLetter || $0.isNumber }
-                        let clipped = String(cleaned.prefix(8))
-                        if clipped != newValue { inputCode = clipped }
+                        // ⚠️ 这里原来写死成「强制大写 + 最多 8 位」——
+                        // 那是**邀请码**的规矩（8 位大写字母数字）。
+                        // 改成用户名之后没跟着改，结果是：
+                        // **5 位的用户名连输都输不进去**（一输就被截断/被按钮挡住）。
+                        // 现在统一走 Username 那一套：小写、字母数字、5-15 位。
+                        let cleaned = Username.normalize(newValue)
+                        if cleaned != newValue { inputCode = cleaned }
                     }
 
                 Button(action: add) {
@@ -190,7 +192,7 @@ struct AddFriendView: View {
         .card()
     }
 
-    private var canAdd: Bool { inputCode.count == 8 && !isAdding }
+    private var canAdd: Bool { Username.isValid(inputCode) && !isAdding }
 
     private func feedbackRow(_ text: String, icon: String, color: Color) -> some View {
         HStack(alignment: .top, spacing: 6) {

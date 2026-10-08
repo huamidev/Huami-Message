@@ -69,6 +69,20 @@ protocol LocalStore: AnyObject {
     /// 删除一整个会话（连同里面的所有消息）
     func deleteConversation(friendID: Friend.ID)
 
+    /// 把某个好友和它的消息从本地抹掉，**但不留墓碑**。
+    ///
+    /// 【为什么必须和 deleteConversation 分开】
+    ///
+    /// `deleteConversation` 是"**用户主动**删好友"，要留墓碑 ——
+    /// 否则下次同步会把他又拉回来。
+    ///
+    /// 这个是"**服务器上已经没有他了**，本地跟着清"，绝对不能留墓碑：
+    /// 留了的话，他以后再加你，就永远加不回来了 ——
+    /// 墓碑会挡住所有"把他同步回来"的尝试，而且没有任何界面能撤销它。
+    ///
+    /// 一句话：**墓碑是"我不想再见到他"，不是"他在服务器上没了"。**
+    func forgetFriend(friendID: Friend.ID)
+
     /// 只清空聊天记录，保留好友
     func clearMessages(with friendID: Friend.ID)
 
@@ -300,6 +314,18 @@ final class SwiftDataLocalStore: LocalStore {
     }
 
     // MARK: 删除与拉黑
+
+    func forgetFriend(friendID: Friend.ID) {
+        // 和 deleteConversation 同样的删除顺序（先消息后好友），
+        // **唯一的区别是不写墓碑**。理由见协议那边的说明。
+        for message in messages(of: friendID) {
+            context.delete(message)
+        }
+        if let friend = findFriend(friendID) {
+            context.delete(friend)
+        }
+        commit()
+    }
 
     func deleteConversation(friendID: Friend.ID) {
         // 先删消息，再删好友 —— 顺序不能反。
