@@ -16,7 +16,10 @@ import SwiftData
 //
 // ============================================================================
 
-protocol LocalStore {
+protocol LocalStore: AnyObject {
+
+    /// 当前登录的账号。设置它之后，读写都只针对这个账号的数据。
+    var ownerIDString: String { get set }
 
     /// 读出所有会话，按最近说话时间从新到旧。
     /// 界面启动时第一件事就是调它 —— 这个调用有多快，决定 App 打开有多快。
@@ -114,9 +117,24 @@ final class SwiftDataLocalStore: LocalStore {
 
     // MARK: 读
 
+    /// 当前登录的是哪个账号。
+    ///
+    /// 界面在登录 / 退出时会设置它。本地库里每条数据都带着自己的归属，
+    /// **只显示和当前账号对得上的那些** —— 这就是"账号之间互相看不见"。
+    var ownerIDString: String = ""
+
+    /// 只留下属于当前账号的记录。
+    ///
+    /// 在内存里过滤而不是写进数据库查询条件：本地数据量很小（几十个好友、
+    /// 几千条消息），而这样写**只有一个地方需要维护** ——
+    /// 用 `#Predicate` 的话，每个查询都得记得加一次，漏一个就是一个数据泄露。
+    private func owned<T>(_ items: [T], _ owner: (T) -> String) -> [T] {
+        items.filter { owner($0) == ownerIDString }
+    }
+
     func loadConversations() -> [Conversation] {
         // 好友数量很少（几十个），全查没问题
-        let friends = fetchAll(StoredFriend.self)
+        let friends = owned(fetchAll(StoredFriend.self)) { $0.ownerIDString }
 
         return friends
             .map { stored in
@@ -138,7 +156,7 @@ final class SwiftDataLocalStore: LocalStore {
             predicate: #Predicate { $0.friendID == friendID },
             sortBy: [SortDescriptor(\.sentAt, order: .forward)]
         )
-        return fetch(descriptor).map(\.asMessage)
+        return owned(fetch(descriptor)) { $0.ownerIDString }.map(\.asMessage)
     }
 
     // MARK: 写
@@ -150,8 +168,11 @@ final class SwiftDataLocalStore: LocalStore {
         if let existing = findFriend(friend.id) {
             existing.name = friend.name
             existing.avatarSeed = friend.avatarSeed
+            existing.ownerIDString = ownerIDString
         } else {
-            context.insert(StoredFriend(id: friend.id, name: friend.name, avatarSeed: friend.avatarSeed))
+            let stored = StoredFriend(id: friend.id, name: friend.name, avatarSeed: friend.avatarSeed)
+            stored.ownerIDString = ownerIDString
+            context.insert(stored)
         }
         commit()
     }
@@ -237,7 +258,9 @@ final class SwiftDataLocalStore: LocalStore {
 
         // 已知不存在，就不必白查一次数据库
         if knownExisting?.contains(message.id) == false {
-            context.insert(StoredMessage(from: message))
+            let stored = StoredMessage(from: message)
+            stored.ownerIDString = ownerIDString
+            context.insert(stored)
             return true
         }
 
@@ -256,13 +279,16 @@ final class SwiftDataLocalStore: LocalStore {
             // 而更新的时候是手写字段，**加了新字段很容易只改一处**。
             //
             // 以后再加消息字段，**两个地方都要改**（这里和 StoredMessage 的 init）。
+            existing.ownerIDString = ownerIDString
             existing.text = message.text
             existing.imageURLString = message.imageURL?.absoluteString
             existing.sentAt = message.sentAt
             existing.polishedStyle = message.polishedWith?.rawValue
             existing.statusRaw = message.status.rawValue
         } else {
-            context.insert(StoredMessage(from: message))
+            let stored = StoredMessage(from: message)
+            stored.ownerIDString = ownerIDString
+            context.insert(stored)
         }
         return true
     }

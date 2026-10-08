@@ -83,6 +83,29 @@ final class ChatStore {
     ///   ② 再去后台悄悄同步服务器（可能要几秒），拉到什么补什么
     ///
     /// 顺序反过来的话（先等网络），App 打开就会转圈 —— 那是所有"卡顿感"的来源。
+    /// 切换（或清空）当前账号。
+    ///
+    /// 【为什么必须清掉内存里的东西】
+    ///
+    /// 本地库只是"不再返回"别的账号的数据；但**内存里那份
+    /// `conversations` / `messagesByFriend` 还是上一个账号的** ——
+    /// 不清的话，退出登录的那一瞬间，界面还挂着上一个人的聊天列表。
+    /// 用户报的"两个账号的会话混在一起"就是这么来的。
+    ///
+    /// 清完再 `start()`：`start()` 有 `guard conversations.isEmpty`，
+    /// 正好借这个条件重新走一遍"读本地 → 后台同步"。
+    func setOwner(_ id: UUID?) async {
+        let newOwner = id?.uuidString.lowercased() ?? ""
+        guard newOwner != local.ownerIDString else { return }
+
+        local.ownerIDString = newOwner
+        conversations = []
+        messagesByFriend = [:]
+
+        guard id != nil else { return }   // 退出登录：清空就够了
+        await start()
+    }
+
     func start() async {
         guard conversations.isEmpty else { return }
 

@@ -18,6 +18,26 @@ import SwiftData
 final class StoredFriend {
 
     var id: UUID
+
+    /// **这条数据属于哪个账号**（账号的用户 ID 字符串）。
+    ///
+    /// 【为什么必须要有这个字段 —— 这是一个真实且严重的 bug】
+    ///
+    /// 本地数据库原来**没有任何"归属"概念**：谁登录过，数据就都混在一起。
+    /// 用户拿两个账号在这台手机上登过，结果：
+    ///
+    ///   消息列表里同时出现两个账号的会话，
+    ///   而且**两条都叫「我」**（注册时给的默认昵称），
+    ///   于是看起来像"昵称没更新" —— 其实是**看到了另一个账号的数据**。
+    ///
+    /// 这不只是显示问题：**A 账号能看到 B 账号的聊天记录**，
+    /// 是隐私事故。
+    ///
+    /// 存字符串而不是 UUID：SwiftData 的 `#Predicate` 对可选值和 UUID
+    /// 的比较有些坑，而字符串比较永远可靠。空字符串表示"还没归属"
+    ///（旧数据就是这种状态，加上这个字段之后它们自然不再显示）。
+    var ownerIDString: String = ""
+
     var name: String
     var avatarSeed: Int
 
@@ -55,6 +75,10 @@ final class StoredFriend {
 final class StoredMessage {
 
     var id: UUID
+
+    /// 这条消息属于哪个账号。理由见 `StoredFriend.ownerIDString`。
+    var ownerIDString: String = ""
+
     var friendID: UUID
     var text: String
 

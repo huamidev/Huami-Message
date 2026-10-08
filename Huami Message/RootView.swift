@@ -252,6 +252,10 @@ struct RootView: View {
                 await auth.handleLink(url)
             }
 
+            // ⚠️ **顺序不能反**：先告诉本地库"现在是谁"，
+            //    再让它读数据。反过来的话，读出来的还是上一个账号的。
+            await store.setOwner(auth.account?.id)
+
             // 没登录就不同步 —— 服务器不知道该给你什么
             guard auth.isSignedIn else { return }
 
