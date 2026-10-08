@@ -37,16 +37,28 @@ struct MessageBubble: View {
             if isMine { Spacer(minLength: 56) }
 
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
-                Text(message.text)
-                    .font(.system(size: 16))
-                    .foregroundStyle(isMine ? .white : Theme.textPrimary)
-                    // 长按可以选中复制 —— 聊天 App 的基本功能，少一行都会被人抱怨
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background { bubble }
-                    // 发送中和发送失败时压暗一点，让「还没成功」这件事一眼可见
-                    .opacity(message.status == .sending ? 0.72 : 1)
+                if let imageURL = message.imageURL {
+                    // 图片消息。
+                    //
+                    // 图片**不加左右内边距** —— 文字需要留白才好读，
+                    // 图片本身有内容，再加一圈白边会显得缩手缩脚。
+                    // 只留 3 磅，让圆角裁切不至于切到画面。
+                    ChatImageView(url: imageURL)
+                        .padding(3)
+                        .background { bubble }
+                        .opacity(message.status == .sending ? 0.72 : 1)
+                } else {
+                    Text(message.text)
+                        .font(.system(size: 16))
+                        .foregroundStyle(isMine ? .white : Theme.textPrimary)
+                        // 长按可以选中复制 —— 聊天 App 的基本功能，少一行都会被人抱怨
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background { bubble }
+                        // 发送中和发送失败时压暗一点，让「还没成功」这件事一眼可见
+                        .opacity(message.status == .sending ? 0.72 : 1)
+                }
 
                 metaRow
             }

@@ -54,6 +54,28 @@ enum AppServices {
         return SupabaseAIService(client: client)
     }
 
+    /// 传一张图片到聊天存储，返回可以直接显示的网址。
+    ///
+    /// 放在这里而不是加进 `ChatService` 协议：那是"聊天"的接口
+    ///（发消息、拉历史），传文件是另一件事。混进去之后，
+    /// 假实现也得假装能传文件，反而更绕。
+    static func uploadChatImage(_ data: Data) async throws -> URL {
+        guard let client else {
+            throw SupabaseError.http(status: 503, message: "现在是示例模式，发不了图片。")
+        }
+        return try await client.upload(data, bucket: SupabaseClient.Bucket.chat,
+                                       contentType: "image/jpeg")
+    }
+
+    /// 传一张头像，返回可以直接显示的网址。
+    static func uploadAvatar(_ data: Data) async throws -> URL {
+        guard let client else {
+            throw SupabaseError.http(status: 503, message: "现在是示例模式，换不了头像。")
+        }
+        return try await client.upload(data, bucket: SupabaseClient.Bucket.avatar,
+                                       contentType: "image/jpeg")
+    }
+
     static func makeChatService() -> ChatService {
         guard let client else { return MockChatService() }
         return SupabaseChatService(client: client)

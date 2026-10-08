@@ -170,6 +170,56 @@ final class ChatStore {
         await deliver(message)
     }
 
+    /// 发一张图片。
+    ///
+    /// 【顺序：先落本地、立刻显示，再上传，最后把地址换成服务器上的】
+    ///
+    /// 不能"先上传再显示" —— 那样用户按下之后要盯着屏幕等几秒，
+    /// 正是这个 App 最不该有的手感。
+    ///
+    /// 也不能"先发一条空消息、再补网址" —— 对方会先收到一条什么都没有的消息，
+    /// 而且上传失败就留下一条永远补不上的空消息。
+    ///
+    /// 所以走的是**和文字消息同一条路**：本地先有一条（图片指向临时文件），
+    /// 立刻可见、可重试；上传成功后把地址替换成服务器的。
+    func sendImage(_ data: Data, to friendID: Friend.ID) async {
+        // 落到临时文件，好让界面马上有东西可显示
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).jpg")
+        guard (try? data.write(to: temp)) != nil else { return }
+
+        let message = Message(
+            friendID: friendID,
+            text: "",
+            imageURL: temp,
+            sender: .me,
+            status: .sending
+        )
+        persist(message)
+        messagesByFriend[friendID, default: []].append(message)
+        // 会话列表那一行的摘要显示「[图片]」而不是空白
+        touch(friendID: friendID, last: "[图片]", at: message.sentAt)
+
+        do {
+            let remoteURL = try await AppServices.uploadChatImage(data)
+
+            var ready = message
+            ready.imageURL = remoteURL
+            persist(ready)
+            replace(message.id, in: friendID, with: ready)
+
+            await deliver(ready)
+        } catch {
+            // 上传失败也要**如实说**，而且要能重试 ——
+            // 悄悄失败的话，用户以为发出去了，对方根本没收到。
+            var failed = message
+            failed.status = .failed
+            persist(failed)
+            replace(message.id, in: friendID, with: failed)
+            Haptics.warning()
+        }
+    }
+
     /// 用户在界面上点了"重试"
     func retry(_ message: Message) async {
         var retrying = message

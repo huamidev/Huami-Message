@@ -255,6 +255,25 @@ struct RootView: View {
             if !DevFlags.addFriendCode.isEmpty {
                 try? await store.addFriend(inviteCode: DevFlags.addFriendCode)
             }
+            // 开发自检：发一张自己画的测试图，验证压缩→上传→显示这条链路
+            if DevFlags.sendTestImage, let first = store.conversations.first {
+                try? await Task.sleep(for: .seconds(1))
+                let size = CGSize(width: 1400, height: 1050)
+                let image = UIGraphicsImageRenderer(size: size).image { ctx in
+                    UIColor.systemTeal.setFill()
+                    ctx.fill(CGRect(origin: .zero, size: size))
+                    let text = "测试图片"
+                    text.draw(at: CGPoint(x: 80, y: 80), withAttributes: [
+                        .font: UIFont.systemFont(ofSize: 160, weight: .bold),
+                        .foregroundColor: UIColor.white,
+                    ])
+                }
+                if let data = image.compressedForChat() {
+                    AppLog.info(.data, "测试图片压缩后 \(data.count) 字节")
+                    await store.sendImage(data, to: first.friend.id)
+                }
+            }
+
             // 开发自检：假装收到一条好友消息（触发自动分析）
             //
             // ⚠️ 必须放在"加好友"**之后** ——

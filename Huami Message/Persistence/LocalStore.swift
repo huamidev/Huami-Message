@@ -248,7 +248,16 @@ final class SwiftDataLocalStore: LocalStore {
                 // 本地还没定论，服务器的旧版本不代表最终结果 —— 直接跳过。
                 return false
             }
+            // ⚠️ **这里是一个很容易漏的坑：字段要一个一个抄。**
+            //
+            // 我加图片功能时就漏了 imageURLString ——
+            // 现象是"图片发出去了、服务器也收到了，但界面显示成一条空消息"。
+            // 因为插入的时候是全量拷贝（StoredMessage(from:)），
+            // 而更新的时候是手写字段，**加了新字段很容易只改一处**。
+            //
+            // 以后再加消息字段，**两个地方都要改**（这里和 StoredMessage 的 init）。
             existing.text = message.text
+            existing.imageURLString = message.imageURL?.absoluteString
             existing.sentAt = message.sentAt
             existing.polishedStyle = message.polishedWith?.rawValue
             existing.statusRaw = message.status.rawValue

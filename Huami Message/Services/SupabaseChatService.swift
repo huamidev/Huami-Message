@@ -149,6 +149,7 @@ final class SupabaseChatService: ChatService {
             senderId: myID,
             recipientId: message.friendID,
             body: message.text,
+            imageUrl: message.imageURL?.absoluteString,
             polishedWith: message.polishedWith?.rawValue
         )
 
@@ -288,6 +289,7 @@ struct MessageRow: Decodable {
     let senderId: UUID
     let recipientId: UUID
     let body: String
+    let imageUrl: String?
     let polishedWith: String?
     let createdAt: Date
 
@@ -302,6 +304,7 @@ struct MessageRow: Decodable {
             id: id,
             friendID: otherParty(myID: myID),
             text: body,
+            imageURL: imageUrl.flatMap(URL.init(string:)),
             sender: mine ? .me : .friend,
             sentAt: createdAt,
             polishedWith: polishedWith.flatMap(PolishStyle.init(rawValue:)),
@@ -316,6 +319,7 @@ struct NewMessageRow: Encodable {
     let senderId: UUID
     let recipientId: UUID
     let body: String
+    let imageUrl: String?
     let polishedWith: String?
 }
 

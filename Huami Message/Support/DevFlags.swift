@@ -135,6 +135,11 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "openAPI")
     }
 
+    /// 启动后自动发一张测试图片（验证"发图片"整条链路）
+    static var sendTestImage: Bool {
+        UserDefaults.standard.bool(forKey: "sendTestImage")
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

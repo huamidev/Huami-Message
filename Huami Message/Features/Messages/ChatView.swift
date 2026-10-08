@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// 和一个真实好友的聊天页 —— 整个 App 最重要的一屏。
 struct ChatView: View {
@@ -39,6 +40,17 @@ struct ChatView: View {
 
     /// 输入框上面的工具栏是不是展开着
     @State private var toolsOpen = DevFlags.openTools
+
+    /// 选照片。
+    ///
+    /// 用系统的 PhotosPicker 而不是自己写相机/相册界面：
+    /// 它自带权限处理、自带"只给选中的那张图"的隐私模式
+    ///（用户不用把整个相册都授权给 App），还不用申请相机权限。
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var showPhotoPicker = false
+
+    /// 选图失败时要说的话
+    @State private var photoError: String?
 
     /// **是否自动分析对方的消息。**
     ///
@@ -157,8 +169,8 @@ struct ChatView: View {
                                     toolsOpen = false
                                 },
                                 onPhoto: {
-                                    // 发图片要等 Supabase Storage 开好（下一步就做）
                                     toolsOpen = false
+                                    showPhotoPicker = true
                                 },
                                 onPolish: {
                                     toolsOpen = false
@@ -588,6 +600,32 @@ struct ChatView: View {
             isNearBottom = nearBottom
             // 一旦回到最底下，新消息就算都看过了
             if nearBottom { unseenCount = 0 }
+        }
+        .alert("图片", isPresented: Binding(
+            get: { photoError != nil },
+            set: { if !$0 { photoError = nil } }
+        )) {
+            Button("好") { photoError = nil }
+        } message: {
+            Text(photoError ?? "")
+        }
+        .photosPicker(isPresented: $showPhotoPicker,
+                      selection: $pickedPhoto,
+                      matching: .images)
+        .onChange(of: pickedPhoto) { _, item in
+            guard let item else { return }
+            Task {
+                defer { pickedPhoto = nil }
+
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data),
+                      let compressed = image.compressedForChat() else {
+                    // 读不出来就明说。静默失败会让用户以为发出去了。
+                    photoError = "这张图片读不出来，换一张试试。"
+                    return
+                }
+                await store.sendImage(compressed, to: conversation.friend.id)
+            }
         }
         .onChange(of: messages.count) { oldCount, newCount in
             // 对方来了新消息 → 自动分析一次（内部会判断开关和防抖）

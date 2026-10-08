@@ -58,6 +58,12 @@ final class StoredMessage {
     var friendID: UUID
     var text: String
 
+    /// 图片地址。
+    ///
+    /// 存字符串而不是 URL：SwiftData 对 URL 的处理不如字符串稳，
+    /// 而且"空值""格式不对"这种情况，用字符串判断直白得多。
+    var imageURLString: String?
+
     /// 是不是我发的。
     /// 数据库里存 Bool 而不是存 enum，是为了简单可靠 —— 只有两种情况。
     var isMine: Bool
@@ -78,6 +84,7 @@ final class StoredMessage {
         id: UUID,
         friendID: UUID,
         text: String,
+        imageURLString: String?,
         isMine: Bool,
         sentAt: Date,
         polishedStyle: String?,
@@ -86,6 +93,7 @@ final class StoredMessage {
         self.id = id
         self.friendID = friendID
         self.text = text
+        self.imageURLString = imageURLString
         self.isMine = isMine
         self.sentAt = sentAt
         self.polishedStyle = polishedStyle
@@ -98,6 +106,7 @@ final class StoredMessage {
             id: message.id,
             friendID: message.friendID,
             text: message.text,
+            imageURLString: message.imageURL?.absoluteString,
             isMine: message.sender == .me,
             sentAt: message.sentAt,
             polishedStyle: message.polishedWith?.rawValue,
@@ -111,6 +120,7 @@ final class StoredMessage {
             id: id,
             friendID: friendID,
             text: text,
+            imageURL: imageURLString.flatMap(URL.init(string:)),
             sender: isMine ? .me : .friend,
             sentAt: sentAt,
             polishedWith: polishedStyle.flatMap(PolishStyle.init(rawValue:)),

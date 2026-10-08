@@ -114,6 +114,19 @@ struct Message: Identifiable, Hashable {
     var friendID: Friend.ID
 
     var text: String
+
+    /// 图片消息的图片地址。纯文字消息是 nil。
+    ///
+    /// 【为什么文字和图片共用一个类型，而不是分成两种消息】
+    ///
+    /// 因为它们在界面上**是同一种东西**：一条气泡、一个时间、一个发送状态。
+    /// 分开之后，排序、分页、未读数、撤回、搜索……每一处都要写两遍。
+    /// 「一条消息可以带张图」比「有两种消息」简单得多。
+    ///
+    /// 带图的消息 text 是空字符串 —— 不是 nil，因为界面上"没有文字"
+    /// 和"文字是空的"没有区别，多一个可选值只会让每处都多一层解包。
+    var imageURL: URL?
+
     var sender: Sender
     var sentAt: Date
 
@@ -131,6 +144,7 @@ struct Message: Identifiable, Hashable {
         id: UUID = UUID(),
         friendID: Friend.ID,
         text: String,
+        imageURL: URL? = nil,
         sender: Sender,
         sentAt: Date = .now,
         polishedWith: PolishStyle? = nil,
@@ -139,6 +153,7 @@ struct Message: Identifiable, Hashable {
         self.id = id
         self.friendID = friendID
         self.text = text
+        self.imageURL = imageURL
         self.sender = sender
         self.sentAt = sentAt
         self.polishedWith = polishedWith

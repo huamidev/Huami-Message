@@ -40,7 +40,11 @@ from urllib.parse import urlparse, parse_qs
 # ============================================================================
 
 USERS = {}        # email -> {"id", "password"}
-PROFILES = {}     # user_id -> {"id","display_name","avatar_seed","invite_code"}
+PROFILES = {}
+
+# 假存储：bucket/路径 → (字节, Content-Type)
+# 只为了让"发图片"这条链路能在本地跑通 —— 真存储的权限规则在这里测不了。
+STORAGE = {}     # user_id -> {"id","display_name","avatar_seed","invite_code"}
 FRIENDSHIPS = []  # [{"user_id","friend_id","blocked","created_at"}]
 MESSAGES = []     # [{"id","sender_id","recipient_id","body","polished_with","created_at"}]
 
@@ -221,6 +225,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/storage/v1/object/public/"):
+            key = parsed.path.replace("/object/public/", "/object/", 1)
+            item = STORAGE.get(key)
+            if item is None:
+                self._send(404, {"message": "Object not found"})
+                return
+            body, content_type = item
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        parsed = urlparse(self.path)
         query = parse_qs(parsed.query, keep_blank_values=True)
         self._log()
 
@@ -256,6 +275,17 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- 写 ----------
 
     def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/storage/v1/object/"):
+            # 直接读原始字节：图片是二进制，不能当 JSON 解
+            length = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(length) if length else b""
+            content_type = self.headers.get("Content-Type") or "application/octet-stream"
+            STORAGE[parsed.path] = (body, content_type)
+            print(f"    → 200 收到 {len(body)} 字节 → {parsed.path}")
+            self._send(200, {"Key": parsed.path.split("/")[-1]})
+            return
+
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query, keep_blank_values=True)
         body = self._body()
@@ -321,6 +351,12 @@ class Handler(BaseHTTPRequestHandler):
                 "sender_id": body.get("sender_id"),
                 "recipient_id": body.get("recipient_id"),
                 "body": body.get("body"),
+                # ⚠️ 这一行漏过一次：假服务器原来是手写字段列表回传的，
+                # 加 image_url 时忘了补，于是 App 把服务器的回传存回本地、
+                # 把刚上传好的图片地址覆盖成了空。
+                # 现象特别迷惑：服务器日志里明明收到了 image_url，
+                # 界面上却是一条空消息。真 Supabase 会回传完整行，不会这样。
+                "image_url": body.get("image_url"),
                 "polished_with": body.get("polished_with"),
                 # 服务器写的时间才是权威的
                 "created_at": now_iso(),
