@@ -137,11 +137,13 @@ struct SearchView: View {
         HStack(spacing: 11) {
             switch hit.kind {
             case .friend:
-                Avatar(initial: hit.friend.initial, seed: hit.friend.avatarSeed, size: 40)
+                Avatar(initial: hit.friend.initial, seed: hit.friend.avatarSeed,
+                       size: 40, url: hit.friend.avatarURL)
             case .message:
                 // 消息命中用小一号的头像 + 一个气泡角标，
                 // 让人一眼分清"这是一句话"而不是"这是个人"
-                Avatar(initial: hit.friend.initial, seed: hit.friend.avatarSeed, size: 34)
+                Avatar(initial: hit.friend.initial, seed: hit.friend.avatarSeed,
+                       size: 34, url: hit.friend.avatarURL)
             }
 
             VStack(alignment: .leading, spacing: 3) {

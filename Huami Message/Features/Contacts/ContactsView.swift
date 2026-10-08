@@ -173,7 +173,8 @@ struct ContactsView: View {
                     HStack(spacing: 12) {
                         Avatar(initial: conversation.friend.initial,
                                seed: conversation.friend.avatarSeed,
-                               size: 44)
+                               size: 44,
+                               url: conversation.friend.avatarURL)
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(conversation.friend.name)

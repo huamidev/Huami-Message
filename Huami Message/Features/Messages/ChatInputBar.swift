@@ -84,7 +84,8 @@ struct ChatInputBar: View {
             if let account = auth.account {
                 Avatar(initial: String(account.displayName.prefix(1)).uppercased(),
                        seed: account.avatarSeed,
-                       size: 26)
+                       size: 26,
+                       url: account.avatarURL)
             }
 
             TextField("说点什么…", text: $text, selection: $selection, axis: .vertical)

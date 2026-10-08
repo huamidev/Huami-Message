@@ -194,12 +194,10 @@ final class SwiftDataLocalStore: LocalStore {
         guard !deletedIDs().contains(friend.id) else { return }
 
         if let existing = findFriend(friend.id) {
-            existing.name = friend.name
-            existing.avatarSeed = friend.avatarSeed
-            existing.ownerIDString = ownerIDString
+            existing.apply(friend, ownerIDString: ownerIDString)
         } else {
             let stored = StoredFriend(id: friend.id, name: friend.name, avatarSeed: friend.avatarSeed)
-            stored.ownerIDString = ownerIDString
+            stored.apply(friend, ownerIDString: ownerIDString)
             context.insert(stored)
         }
         commit()

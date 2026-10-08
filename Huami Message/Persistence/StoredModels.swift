@@ -41,6 +41,9 @@ final class StoredFriend {
     var name: String
     var avatarSeed: Int
 
+    /// 头像照片地址（存字符串，理由同 message）。
+    var avatarURLString: String?
+
     /// 未读消息数。
     ///
     /// 严格说「未读」属于「会话」而不是「好友」，但第一版只有一对一，
@@ -56,7 +59,9 @@ final class StoredFriend {
     /// **这是加数据库字段时的一个好习惯：永远给它一个合理的默认值。**
     var isBlocked: Bool = false
 
-    init(id: UUID, name: String, avatarSeed: Int, unreadCount: Int = 0, isBlocked: Bool = false) {
+    init(id: UUID, name: String, avatarSeed: Int,
+         avatarURLString: String? = nil,
+         unreadCount: Int = 0, isBlocked: Bool = false) {
         self.id = id
         self.name = name
         self.avatarSeed = avatarSeed
@@ -65,8 +70,31 @@ final class StoredFriend {
     }
 
     /// 转成界面用的 struct
+    /// 用界面用的 struct **统一覆盖所有"来自服务器的"字段**。
+    ///
+    /// 【为什么要有这么一个方法】
+    ///
+    /// 这个坑踩了三次：本地库的更新路径是"手写字段列表"，
+    /// 加新字段时只要漏一个，那个字段就会被**默认值悄悄覆盖** ——
+    /// 编译不报错、界面也不报错，只是数据无声无息地没了。
+    ///   · imageURLString —— 图片发出去了，界面是空的
+    ///   · avatarURL —— 换了头像，一保存就没了
+    ///
+    /// 所以集中到这里：**以后加字段只改 init 和这一个方法**，
+    /// 不可能只改一半。
+    ///
+    /// 注意 `unreadCount` / `isBlocked` **故意不覆盖** ——
+    /// 它们是本地状态（未读、拉黑），服务器不是权威。
+    func apply(_ friend: Friend, ownerIDString: String) {
+        self.ownerIDString = ownerIDString
+        self.name = friend.name
+        self.avatarSeed = friend.avatarSeed
+        self.avatarURLString = friend.avatarURL?.absoluteString
+    }
+
     var asFriend: Friend {
-        Friend(id: id, name: name, avatarSeed: avatarSeed)
+        Friend(id: id, name: name, avatarSeed: avatarSeed,
+            avatarURL: avatarURLString.flatMap(URL.init(string:)))
     }
 }
 

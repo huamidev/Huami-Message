@@ -56,7 +56,7 @@ struct ReportSheet: View {
 
     private var targetCard: some View {
         HStack(spacing: 12) {
-            Avatar(initial: friend.initial, seed: friend.avatarSeed, size: 44)
+            Avatar(initial: friend.initial, seed: friend.avatarSeed, size: 44, url: friend.avatarURL)
             VStack(alignment: .leading, spacing: 2) {
                 Text("举报对象")
                     .font(.system(size: 11))

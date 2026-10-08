@@ -84,14 +84,22 @@ struct Friend: Identifiable, Hashable {
     var name: String
     var avatarSeed: Int
 
-    init(id: UUID = UUID(), name: String, avatarSeed: Int) {
+    init(id: UUID = UUID(), name: String, avatarSeed: Int, avatarURL: URL? = nil) {
         self.id = id
         self.name = name
         self.avatarSeed = avatarSeed
+        self.avatarURL = avatarURL
     }
 
     /// 名字的第一个字，暂时当头像用
     var initial: String { String(name.prefix(1)) }
+
+    /// 好友的头像地址。没设置过就是 nil（那时显示彩色方块 + 首字）。
+    ///
+    /// 和 `avatarSeed` 是**两条路**：有照片用照片，没照片用配色。
+    /// 两条都留着，是为了"没上传头像的人"不至于看到一块空白。
+    var avatarURL: URL? = nil
+
 }
 
 // MARK: - 消息

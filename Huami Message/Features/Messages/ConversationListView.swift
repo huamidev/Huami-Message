@@ -237,7 +237,8 @@ private struct ConversationRow: View {
             Avatar(
                 initial: conversation.friend.initial,
                 seed: conversation.friend.avatarSeed,
-                size: 52
+                size: 52,
+                url: conversation.friend.avatarURL
             )
             // 拉黑的人，头像压暗 —— 一眼就能看出来这条会话是"被封住的"
             .opacity(conversation.isBlocked ? 0.4 : 1)

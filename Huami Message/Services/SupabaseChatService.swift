@@ -96,7 +96,8 @@ final class SupabaseChatService: ChatService {
                 return Conversation(
                     friend: Friend(id: profile.id,
                                    name: profile.displayName,
-                                   avatarSeed: profile.avatarSeed),
+                                   avatarSeed: profile.avatarSeed,
+                                   avatarURL: profile.avatarUrl.flatMap(URL.init(string:))),
                     lastMessage: last?.body ?? "",
                     lastTime: last?.createdAt ?? .distantPast,
                     // 未读数是**本地**记的：服务器没有已读回执，
@@ -313,7 +314,10 @@ final class SupabaseChatService: ChatService {
         )
         guard let profile = profiles.first else { throw ChatError.usernameNotFound }
 
-        return Friend(id: profile.id, name: profile.displayName, avatarSeed: profile.avatarSeed)
+        return Friend(id: profile.id,
+                      name: profile.displayName,
+                      avatarSeed: profile.avatarSeed,
+                      avatarURL: profile.avatarUrl.flatMap(URL.init(string:)))
     }
 
     /// 把数据库函数抛出的错误翻成人话。
