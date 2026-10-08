@@ -13,6 +13,17 @@ struct Avatar: View {
     let seed: Int
     var size: CGFloat = 48
 
+    /// 头像照片的网址。没设置过就是 nil —— **那时仍然显示彩色渐变 + 首字**。
+    ///
+    /// 【为什么一定要保留"没有照片"这条路】
+    ///
+    /// 上传头像是"加餐"，不是必经之路。如果没上传就显示一块灰或者破图，
+    /// 那些不想折腾的人（大多数）第一眼看到的就是坏掉的样子。
+    ///
+    /// 给默认值 nil 的好处：**所有老的调用点一行都不用改**，
+    /// 谁有照片谁自己传。
+    var url: URL? = nil
+
     /// 六套配色。选了饱和度偏低、明度偏高的一组 ——
     /// 浅色界面里，头像太艳会抢走正文的注意力。
     ///
@@ -35,9 +46,32 @@ struct Avatar: View {
     private var colors: [Color] { Self.palette(seed) }
 
     var body: some View {
+        Group {
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        // scaledToFill + 固定尺寸：头像本来就是方的，
+                        // 这样不会因为照片比例不同把列表撑歪
+                        image.resizable().scaledToFill()
+                    default:
+                        // 加载中和失败**都退回彩色方块** ——
+                        // 绝不留一块空白，列表里那样看起来就是坏了
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
+    }
+
+    /// 没有照片（或者照片还没加载出来）时的样子：彩色渐变 + 名字首字。
+    private var placeholder: some View {
         RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
             .fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
-            .frame(width: size, height: size)
             .overlay {
                 Text(initial)
                     .font(.system(size: size * 0.42, weight: .medium))

@@ -37,6 +37,9 @@ struct Account: Identifiable, Hashable, Codable {
     /// 它可以改，改了之后**旧名字立刻释放**（别人可以拿去用）。
     var username: String = ""
 
+    /// 头像照片的网址。没上传过就是 nil（那时界面显示彩色方块 + 首字）。
+    var avatarURL: URL? = nil
+
 
     /// 邮箱 @ 前面那段，当默认昵称用
     static func name(from email: String) -> String {
@@ -78,6 +81,9 @@ protocol AuthService {
     /// 返回 nil 表示链接里没有可用凭证 —— 那就退回"手动登录一次"，
     /// 因为**邮箱本身已经在服务端验证成功了**，不该让他重来一遍。
     func adoptSession(accessToken: String, refreshToken: String?) async -> Account?
+
+    /// 换头像。传完之后返回最新的账号。
+    func updateAvatar(_ url: URL) async throws -> Account
 
     /// 改用户名。
     ///

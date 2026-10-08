@@ -104,7 +104,10 @@ struct ProfileView: View {
         // **用户认同的是"我叫什么"，不是"我注册时填了哪个邮箱"**。
         // 邮箱只是"这台设备上登录的是哪个账号"，该退到次要位置。
         VStack(spacing: 12) {
-            Avatar(initial: displayInitial, seed: auth.account?.avatarSeed ?? 0, size: 88)
+            Avatar(initial: displayInitial,
+                   seed: auth.account?.avatarSeed ?? 0,
+                   size: 88,
+                   url: auth.account?.avatarURL)
                 .onTapGesture {
                     Haptics.tap()
                     showEditProfile = true

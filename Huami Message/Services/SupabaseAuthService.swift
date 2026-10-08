@@ -147,6 +147,37 @@ final class SupabaseAuthService: AuthService {
                                        refreshToken: refreshToken)
     }
 
+    // MARK: - 换头像
+
+    func updateAvatar(_ url: URL) async throws -> Account {
+        guard let current = currentAccount() else { throw AuthError.notSignedIn }
+
+        let rows: [ProfileRow] = try await client.patch(
+            "/rest/v1/profiles",
+            query: [URLQueryItem(name: "id",
+                                 value: "eq.\(current.id.uuidString.lowercased())")],
+            body: AvatarPatch(avatarUrl: url.absoluteString),
+            prefer: "return=representation",
+            as: [ProfileRow].self
+        )
+
+        let updated = Account(
+            id: current.id,
+            email: current.email,
+            displayName: current.displayName,
+            avatarSeed: current.avatarSeed,
+            bio: current.bio,
+            username: rows.first?.username ?? current.username,
+            avatarURL: rows.first?.avatarUrl.flatMap(URL.init(string:)) ?? url
+        )
+        cachedAccount = updated
+        if var session = Self.loadSession() {
+            session.account = updated
+            saveSession(session)
+        }
+        return updated
+    }
+
     // MARK: - 改用户名
 
     func updateUsername(_ username: String) async throws -> Account {
@@ -329,7 +360,8 @@ final class SupabaseAuthService: AuthService {
             displayName: profile?.displayName ?? Account.name(from: email),
             avatarSeed: profile?.avatarSeed ?? 0,
             bio: profile?.bio ?? "",
-            username: profile?.username ?? ""
+            username: profile?.username ?? "",
+            avatarURL: profile?.avatarUrl.flatMap(URL.init(string:))
         )
 
         cachedAccount = account
@@ -437,6 +469,11 @@ private struct EmptyBody: Encodable {}
 /// 改用户名时发给服务器的字段。
 /// 只发这一个 —— **不要顺手把别的字段也发上去**：
 /// 并发改资料时，把没变的字段一起发会互相覆盖。
+/// 换头像时只发这一个字段（理由同 UsernamePatch）。
+private struct AvatarPatch: Encodable {
+    let avatarUrl: String
+}
+
 private struct UsernamePatch: Encodable {
     let username: String
 }

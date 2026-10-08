@@ -83,6 +83,14 @@ final class MockAuthService: AuthService {
         return record.account
     }
 
+    func updateAvatar(_ url: URL) async throws -> Account {
+        try await simulateNetwork()
+        guard var account = currentAccount() else { throw AuthError.notSignedIn }
+        account.avatarURL = url
+        saveSession(account)
+        return account
+    }
+
     func updateUsername(_ username: String) async throws -> Account {
         try await simulateNetwork()
         let cleaned = Username.normalize(username)

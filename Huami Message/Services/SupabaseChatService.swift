@@ -271,6 +271,9 @@ struct ProfileRow: Decodable {
     let avatarSeed: Int
     let username: String?
 
+    /// 头像照片网址。同样可选 —— 没上传过的人这一项是空的。
+    let avatarUrl: String?
+
     /// 简介。
     ///
     /// ⚠️ **必须是可选的，而且查询要用 `select=*`。**

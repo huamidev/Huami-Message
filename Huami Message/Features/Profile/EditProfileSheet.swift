@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// 编辑资料。
 ///
@@ -26,6 +27,11 @@ struct EditProfileSheet: View {
     /// 改用户名的结果（成功 / 被占用 / 格式问题）
     @State private var usernameNote: String?
     @State private var usernameOK = false
+
+    /// 选头像照片
+    @State private var pickedAvatar: PhotosPickerItem?
+    @State private var avatarBusy = false
+    @State private var avatarNote: String?
 
     private static let bioLimit = 70
 
@@ -55,6 +61,19 @@ struct EditProfileSheet: View {
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .background(AppBackground())
+            .onChange(of: pickedAvatar) { _, item in
+                guard let item else { return }
+                Task {
+                    defer { pickedAvatar = nil }
+                    guard let raw = try? await item.loadTransferable(type: Data.self),
+                          let image = UIImage(data: raw),
+                          let compressed = image.compressedForAvatar() else {
+                        avatarNote = "这张图片读不出来，换一张试试。"
+                        return
+                    }
+                    uploadAvatar(compressed)
+                }
+            }
             .navigationTitle("编辑资料")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -75,10 +94,38 @@ struct EditProfileSheet: View {
 
     private var avatarPicker: some View {
         VStack(spacing: 12) {
-            Avatar(initial: String(name.prefix(1)).uppercased(),
-                   seed: avatarSeed, size: 84)
+            // 头像：**点一下就能换照片**
+            PhotosPicker(selection: $pickedAvatar, matching: .images) {
+                ZStack(alignment: .bottomTrailing) {
+                    Avatar(initial: String(name.prefix(1)).uppercased(),
+                           seed: avatarSeed,
+                           size: 84,
+                           url: auth.account?.avatarURL)
 
-            Text("选一个底色")
+                    // 一个小小的相机角标 —— 不加的话没人知道这里能点
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 26, height: 26)
+                        .background(Theme.accent, in: Circle())
+                        .overlay { Circle().strokeBorder(Theme.surface, lineWidth: 2) }
+                        .offset(x: 3, y: 3)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(avatarBusy)
+
+            if avatarBusy {
+                Text("正在上传…").font(.system(size: 12)).foregroundStyle(Theme.textTertiary)
+            } else if let avatarNote {
+                Text(avatarNote)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.danger)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+            }
+
+            Text("点上面的头像可以换照片")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textTertiary)
 
@@ -106,6 +153,28 @@ struct EditProfileSheet: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
         .card()
+    }
+
+    /// 选完照片：压缩 → 上传 → 写进资料。
+    ///
+    /// 顺序是**先传再存**：先传拿到网址，再把网址写进 profile。
+    /// 反过来的话，中途失败就会留下一行指向空气的记录。
+    private func uploadAvatar(_ data: Data) {
+        avatarBusy = true
+        avatarNote = nil
+        Task {
+            defer { avatarBusy = false }
+            do {
+                let url = try await AppServices.uploadAvatar(data)
+                let ok = await auth.updateAvatar(url)
+                if !ok { avatarNote = auth.errorMessage }
+            } catch {
+                // 失败要说出来。静默失败会让用户以为换好了，
+                // 然后一直纳闷"怎么还是老样子"。
+                avatarNote = (error as? LocalizedError)?.errorDescription
+                    ?? "头像没传上去，等一下再试。"
+            }
+        }
     }
 
     // MARK: - 昵称和简介

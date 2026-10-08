@@ -278,6 +278,26 @@ struct RootView: View {
             if !DevFlags.addFriendCode.isEmpty {
                 try? await store.addFriend(username: DevFlags.addFriendCode)
             }
+            // 开发自检：传一张自己画的测试头像
+            if DevFlags.testAvatar {
+                try? await Task.sleep(for: .seconds(1))
+                let size = CGSize(width: 600, height: 600)
+                let image = UIGraphicsImageRenderer(size: size).image { ctx in
+                    UIColor.systemPink.setFill()
+                    ctx.fill(CGRect(origin: .zero, size: size))
+                    "头".draw(at: CGPoint(x: 190, y: 190), withAttributes: [
+                        .font: UIFont.systemFont(ofSize: 200, weight: .bold),
+                        .foregroundColor: UIColor.white,
+                    ])
+                }
+                if let data = image.compressedForAvatar() {
+                    AppLog.info(.data, "测试头像压缩后 \(data.count) 字节")
+                    if let url = try? await AppServices.uploadAvatar(data) {
+                        _ = await auth.updateAvatar(url)
+                    }
+                }
+            }
+
             // 开发自检：发一张自己画的测试图，验证压缩→上传→显示这条链路
             if DevFlags.sendTestImage, let first = store.conversations.first {
                 try? await Task.sleep(for: .seconds(1))

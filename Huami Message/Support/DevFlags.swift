@@ -145,6 +145,11 @@ enum DevFlags {
         UserDefaults.standard.integer(forKey: "popAfter")
     }
 
+    /// 启动后自动传一张测试头像（验证"换头像"整条链路）
+    static var testAvatar: Bool {
+        UserDefaults.standard.bool(forKey: "testAvatar")
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

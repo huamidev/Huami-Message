@@ -513,7 +513,7 @@ class Handler(BaseHTTPRequestHandler):
 
             # 只更新传上来的字段
             changed = []
-            for key in ("display_name", "bio", "avatar_seed"):
+            for key in ("display_name", "bio", "avatar_seed", "avatar_url", "username"):
                 if key in body:
                     profile[key] = body[key]
                     changed.append(key)
