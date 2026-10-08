@@ -155,16 +155,18 @@ struct ChatView: View {
                 messageList(proxy: proxy)
 
                 VStack(spacing: 0) {
-                    // ── 底部渐隐 ──
-                    // 让消息在接近输入栏时"淡淡地没掉"，而不是被一条硬边切断。
-                    // Telegram / 微信都是这么做的。
-                    LinearGradient(
-                        colors: [Theme.background.opacity(0), Theme.background],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 30)
-                    .allowsHitTesting(false)   // 别挡住手指滚动
+                    // ── 底部渐隐**去掉了** ──
+                    //
+                    // 这里原来有一条 30 磅的渐隐（透明 → 背景色），
+                    // 让消息接近输入栏时"淡淡地没掉"。
+                    //
+                    // 用户的要求是"学习顶栏的做法" —— 顶栏那边去掉的是
+                    // **我们自己铺的一层东西**（标题胶囊的毛玻璃），
+                    // 底下对应的就是这一条渐隐。
+                    //
+                    // 留着它的后果和顶栏一模一样：一条横贯屏幕的色带，
+                    // 把消息从中间切断。想"边角柔和"可以靠留白和间距，
+                    // 不必再铺一层颜色 —— 铺了就一定有边。
 
                     VStack(spacing: 6) {
                         // 「回到最新」只在用户往上翻的时候出现 —— 平时不占地方
