@@ -84,6 +84,20 @@ final class MockAuthService: AuthService {
         return record.account
     }
 
+    func updateUsername(_ username: String) async throws -> Account {
+        try await simulateNetwork()
+        let cleaned = Username.normalize(username)
+        if let problem = Username.problem(with: cleaned) {
+            throw AuthError.unknown(problem)
+        }
+        guard var account = currentAccount() else { throw AuthError.notSignedIn }
+
+        // 示例模式下没有"别人"，所以永远不冲突
+        account.username = cleaned
+        saveSession(account)
+        return account
+    }
+
     func updateProfile(displayName: String, bio: String, avatarSeed: Int) async throws -> Account {
         try await simulateNetwork()
         guard var account = currentAccount() else { throw AuthError.notSignedIn }

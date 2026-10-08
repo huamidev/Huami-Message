@@ -34,6 +34,12 @@ struct Account: Identifiable, Hashable, Codable {
     /// 用 nil 表达会让每处都要多写一层解包。
     var bio: String = ""
 
+    /// 全局唯一的用户名（就是"加好友用的那个 ID"）。
+    ///
+    /// 全部小写、只含字母和数字、不可重复 —— 规矩见 `Username`。
+    /// 它可以改，改了之后**旧名字立刻释放**（别人可以拿去用）。
+    var username: String = ""
+
 
     /// 邮箱 @ 前面那段，当默认昵称用
     static func name(from email: String) -> String {
@@ -75,6 +81,14 @@ protocol AuthService {
     /// 返回 nil 表示链接里没有可用凭证 —— 那就退回"手动登录一次"，
     /// 因为**邮箱本身已经在服务端验证成功了**，不该让他重来一遍。
     func adoptSession(accessToken: String, refreshToken: String?) async -> Account?
+
+    /// 改用户名。
+    ///
+    /// 单独一个方法（而不是并进 updateProfile）：
+    /// 它的失败理由和别的字段**完全不同** ——
+    /// "被占用了""格式不对""是保留字"，每一种都要给不同的话。
+    /// 混进通用的资料更新里，这些理由就传不出来了。
+    func updateUsername(_ username: String) async throws -> Account
 
     /// 改昵称、简介、头像色。
     ///

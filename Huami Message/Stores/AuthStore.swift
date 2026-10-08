@@ -37,6 +37,26 @@ final class AuthStore {
     /// 登录状态能不能记住（记不住时界面要如实告诉用户）
     var isSessionPersisted: Bool { service.isSessionPersisted }
 
+    /// 改用户名。
+    ///
+    /// 和改昵称分开，因为它的失败理由完全不同（被占用 / 格式 / 保留字），
+    /// 那些理由要原样交给界面显示。
+    func updateUsername(_ username: String) async -> Bool {
+        isWorking = true
+        errorMessage = nil
+        defer { isWorking = false }
+
+        do {
+            account = try await service.updateUsername(username)
+            Haptics.success()
+            return true
+        } catch {
+            errorMessage = describe(error)
+            Haptics.warning()
+            return false
+        }
+    }
+
     /// 改昵称、简介、头像色。
     func updateProfile(displayName: String, bio: String, avatarSeed: Int) async -> Bool {
         isWorking = true

@@ -147,6 +147,80 @@ final class SupabaseAuthService: AuthService {
                                        refreshToken: refreshToken)
     }
 
+    // MARK: - 改用户名
+
+    func updateUsername(_ username: String) async throws -> Account {
+        let cleaned = Username.normalize(username)
+
+        // 先在本地拦一道：格式不对根本不用发请求。
+        // 快是一方面，更重要的是**错误信息可以写得具体**
+        //（"至少要 5 位"比服务器那句约束名有用得多）。
+        if let problem = Username.problem(with: cleaned) {
+            throw AuthError.unknown(problem)
+        }
+
+        guard let current = currentAccount() else { throw AuthError.notSignedIn }
+
+        let rows: [ProfileRow]
+        do {
+            rows = try await client.patch(
+                "/rest/v1/profiles",
+                query: [URLQueryItem(name: "id",
+                                     value: "eq.\(current.id.uuidString.lowercased())")],
+                body: UsernamePatch(username: cleaned),
+                prefer: "return=representation",
+                as: [ProfileRow].self
+            )
+        } catch {
+            throw Self.translateUsernameError(error)
+        }
+
+        let updated = Account(
+            id: current.id,
+            email: current.email,
+            displayName: current.displayName,
+            avatarSeed: current.avatarSeed,
+            inviteCode: current.inviteCode,
+            bio: current.bio,
+            username: rows.first?.username ?? cleaned
+        )
+        cachedAccount = updated
+        if var session = Self.loadSession() {
+            session.account = updated
+            saveSession(session)
+        }
+        return updated
+    }
+
+    /// 把数据库的报错翻译成"用户能照做的一句话"。
+    ///
+    /// 【为什么要专门做这件事】
+    ///
+    /// 用户名有三种完全不同的失败方式，而数据库只会给
+    /// "duplicate key value violates unique constraint ..." 这种话：
+    ///   · 被占用 —— 换一个名字
+    ///   · 是保留字 —— 换个别的（我们的触发器已经写好了人话，直接透传）
+    ///   · 格式不对 —— 按理说本地就拦住了，这里是兜底
+    ///
+    /// 不翻译的话，用户看到的是约束名，等于没说。
+    private static func translateUsernameError(_ error: Error) -> Error {
+        guard case SupabaseError.http(let status, let message) = error else { return error }
+
+        // 409 / 23505 都是"唯一约束冲突"
+        if status == 409 || message.contains("23505")
+            || message.contains("duplicate key") {
+            return AuthError.unknown("这个名字已经有人用了，换一个吧。")
+        }
+        if message.contains("保留") {
+            return AuthError.unknown(message)      // 触发器已经说了人话
+        }
+        if message.contains("profiles_username_format")
+            || message.contains("check constraint") {
+            return AuthError.unknown("用户名只能是英文字母和数字，字母开头，5 到 20 位。")
+        }
+        return error
+    }
+
     // MARK: - 改资料
 
     func updateProfile(displayName: String, bio: String, avatarSeed: Int) async throws -> Account {
@@ -172,7 +246,8 @@ final class SupabaseAuthService: AuthService {
             displayName: displayName,
             avatarSeed: avatarSeed,
             inviteCode: rows.first?.inviteCode ?? current.inviteCode,
-            bio: bio
+            bio: bio,
+            username: rows.first?.username ?? current.username
         )
 
         cachedAccount = updated
@@ -256,7 +331,8 @@ final class SupabaseAuthService: AuthService {
             displayName: profile?.displayName ?? Account.name(from: email),
             avatarSeed: profile?.avatarSeed ?? 0,
             inviteCode: profile?.inviteCode ?? "--------",
-            bio: profile?.bio ?? ""
+            bio: profile?.bio ?? "",
+            username: profile?.username ?? ""
         )
 
         cachedAccount = account
@@ -361,6 +437,13 @@ private struct EmptyBody: Encodable {}
 
 /// 改资料时发给服务器的字段。
 /// 用 convertToSnakeCase 会自动变成 display_name / bio / avatar_seed。
+/// 改用户名时发给服务器的字段。
+/// 只发这一个 —— **不要顺手把别的字段也发上去**：
+/// 并发改资料时，把没变的字段一起发会互相覆盖。
+private struct UsernamePatch: Encodable {
+    let username: String
+}
+
 private struct ProfilePatch: Encodable {
     let displayName: String
     let bio: String

@@ -314,6 +314,9 @@ class Handler(BaseHTTPRequestHandler):
                 # 真服务器上这一列是后加的（要用户跑 alter table）。
                 # 假服务器直接给上，方便验证"改简介"这条链路。
                 "bio": "",
+                # 用户名：真服务器上是注册时从 id 派生的，
+                # 假服务器直接给一个，方便看界面
+                "username": "u" + user_id.replace("-", "")[:10],
             }
             print(f"    → 200 注册成功，邀请码 {PROFILES[user_id]['invite_code']}")
             self._send(200, self._session(email, user_id))

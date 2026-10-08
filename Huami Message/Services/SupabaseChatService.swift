@@ -271,6 +271,10 @@ struct ProfileRow: Decodable {
     let avatarSeed: Int
     let inviteCode: String
 
+    /// 用户名。可选的理由和 bio 一样：字段是后加的，
+    /// 用可选值能让加字段前后都能正常解码。
+    let username: String?
+
     /// 简介。
     ///
     /// ⚠️ **必须是可选的，而且查询要用 `select=*`。**

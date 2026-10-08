@@ -27,6 +27,9 @@ struct ProfileView: View {
     @State private var showEditProfile = false
 
     /// 是否打开「API 接入」
+
+    /// 刚复制过用户名（用来把图标变成对勾）
+    @State private var copiedUsername = false
     @State private var showAPIAccess = false
 
     var body: some View {
@@ -118,6 +121,25 @@ struct ProfileView: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 20)
+
+                // 用户名：**别人的入口**，所以放在名字下面最显眼处，
+                // 点一下就能复制走，好发给别人
+                if let username = auth.account?.username, !username.isEmpty {
+                    Button {
+                        Haptics.tap()
+                        UIPasteboard.general.string = username
+                        copiedUsername = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("@\(username)")
+                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            Image(systemName: copiedUsername ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 10))
+                        }
+                        .foregroundStyle(copiedUsername ? Theme.mint : Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 Text(auth.account?.email ?? "")
                     .font(.system(size: 11.5))

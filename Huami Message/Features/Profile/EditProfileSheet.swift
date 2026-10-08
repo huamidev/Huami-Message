@@ -19,12 +19,21 @@ struct EditProfileSheet: View {
     @State private var avatarSeed: Int
     @State private var isSaving = false
 
+    /// 用户名。边打字边过滤，不合法的字符**根本打不进去** ——
+    /// 比"输完了再报错"友好得多。
+    @State private var username: String
+
+    /// 改用户名的结果（成功 / 被占用 / 格式问题）
+    @State private var usernameNote: String?
+    @State private var usernameOK = false
+
     private static let bioLimit = 70
 
     init(account: Account) {
         _name = State(initialValue: account.displayName)
         _bio = State(initialValue: account.bio)
         _avatarSeed = State(initialValue: account.avatarSeed)
+        _username = State(initialValue: account.username)
     }
 
     private var canSave: Bool {
@@ -37,6 +46,7 @@ struct EditProfileSheet: View {
                 VStack(spacing: 18) {
                     avatarPicker
                     fields
+                    usernameField
                     if let message = auth.errorMessage { errorBanner(message) }
                 }
                 .padding(18)
@@ -140,6 +150,82 @@ struct EditProfileSheet: View {
             .padding(.vertical, 12)
         }
         .card(radius: 16)
+    }
+
+    /// 用户名。
+    ///
+    /// 【为什么它单独一张卡片，不并进"昵称/简介"那一块】
+    ///
+    /// 因为它是**别人的入口** —— 别人靠这个名字找到你。
+    /// 昵称和简介只是"看上去像谁"，用户名是"怎么找到你"。
+    /// 混在一起，用户会以为它和昵称一样随便改改没关系。
+    private var usernameField: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 2) {
+                Text("@")
+                    .font(.system(size: 16, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.textTertiary)
+
+                TextField("用户名", text: $username)
+                    .font(.system(size: 16, design: .monospaced))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onChange(of: username) { _, newValue in
+                        // 不合法的一律打不进去，顺手转小写
+                        let cleaned = Username.normalize(newValue)
+                        if cleaned != newValue { username = cleaned }
+                        usernameNote = nil
+                    }
+            }
+
+            Text("别人用这个名字加你。只能用**英文字母和数字**，字母开头，\(Username.minLength)–\(Username.maxLength) 位。")
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let note = usernameNote {
+                Text(note)
+                    .font(.system(size: 12))
+                    .foregroundStyle(usernameOK ? Theme.mint : Theme.danger)
+            }
+
+            if username != (auth.account?.username ?? "") {
+                Button {
+                    saveUsername()
+                } label: {
+                    Text(isSaving ? "保存中…" : "保存用户名")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(
+                            Username.isValid(username) ? Theme.accent : Theme.textTertiary,
+                            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!Username.isValid(username) || isSaving)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .card()
+    }
+
+    private func saveUsername() {
+        guard Username.isValid(username) else { return }
+        isSaving = true
+        Task {
+            let ok = await auth.updateUsername(username)
+            isSaving = false
+            usernameOK = ok
+            if ok {
+                usernameNote = "改好了。旧名字已经释放，别人可以拿去用。"
+            } else {
+                // 失败原因原样显示 —— 后端已经把这些话说成人话了
+                usernameNote = auth.errorMessage
+            }
+        }
     }
 
     private func errorBanner(_ message: String) -> some View {
