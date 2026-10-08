@@ -199,6 +199,19 @@ struct ChatView: View {
         // 会透出一层模糊的颜色在动。这种「边缘也在呼吸」的细节很值钱。
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        // 进聊天页就**把底栏藏起来**（微信、Telegram 都是这样）。
+        //
+        // 【为什么要专门写这一行】
+        //
+        // 在 TabView 里用 NavigationStack 推进去的页面，底栏**默认是一直挂着的** ——
+        // 系统不知道你希望它消失。
+        //
+        // 藏起来不只是为了好看：聊天时底下那条栏会**压住最后几条消息**，
+        // 而且输入框和它挤在一起，手指容易点错。藏掉之后整屏都是对话。
+        //
+        // ⚠️ 这个修饰符要写在**被推进去的那个页面**上，不要写在 TabView 上 ——
+        // 写在 TabView 上会连根一起藏掉，返回之后也回不来。
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { manageMenu }
         }
