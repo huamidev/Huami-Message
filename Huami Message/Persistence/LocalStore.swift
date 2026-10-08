@@ -169,7 +169,7 @@ final class SwiftDataLocalStore: LocalStore {
                 let last = lastMessage(with: stored.id)
                 return Conversation(
                     friend: stored.asFriend,
-                    lastMessage: last?.text ?? "",
+                    lastMessage: last?.preview ?? "",
                     lastTime: last?.sentAt ?? .distantPast,
                     unreadCount: stored.unreadCount,
                     isBlocked: stored.isBlocked

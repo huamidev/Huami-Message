@@ -107,6 +107,24 @@ struct Friend: Identifiable, Hashable {
 /// 一条消息。这是整个 App 最核心的数据结构。
 struct Message: Identifiable, Hashable {
 
+    /// 会话列表里那一行显示什么。
+    ///
+    /// ⚠️ **不能直接用 text。**
+    ///
+    /// 语音和图片消息的 text 是空的 —— 直接显示就成了「（没有消息）」，
+    /// 用户明明刚发了一条语音，列表里却说"没有消息"。
+    ///
+    /// 这是用户报出来的 bug。发的时候内存里是对的（那里手动写了
+    /// 「[语音]」），**但一从数据库重读就变回空了** ——
+    /// 因为重读时走的是 text。
+    ///
+    /// 所以摘要这件事必须只有一处实现，发和读都走它。
+    var preview: String {
+        if audioURL != nil { return "[语音]" }
+        if imageURL != nil { return "[图片]" }
+        return text
+    }
+
     /// 谁发的
     enum Sender: Hashable {
         case me      // 我发的

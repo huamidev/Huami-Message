@@ -276,7 +276,7 @@ final class ChatStore {
         )
         persist(message)
         messagesByFriend[friendID, default: []].append(message)
-        touch(friendID: friendID, last: trimmed, at: message.sentAt)
+        touch(friendID: friendID, last: message.preview, at: message.sentAt)
 
         // ② 真正送出去
         await deliver(message)
@@ -310,7 +310,7 @@ final class ChatStore {
         persist(message)
         messagesByFriend[friendID, default: []].append(message)
         // 会话列表那一行的摘要显示「[图片]」而不是空白
-        touch(friendID: friendID, last: "[图片]", at: message.sentAt)
+        touch(friendID: friendID, last: message.preview, at: message.sentAt)
 
         do {
             let remoteURL = try await AppServices.uploadChatImage(data)
@@ -351,7 +351,7 @@ final class ChatStore {
         )
         persist(message)
         messagesByFriend[friendID, default: []].append(message)
-        touch(friendID: friendID, last: "[语音]", at: message.sentAt)
+        touch(friendID: friendID, last: message.preview, at: message.sentAt)
 
         do {
             let remoteURL = try await AppServices.uploadVoice(data)
