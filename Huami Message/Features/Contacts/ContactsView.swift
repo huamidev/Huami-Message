@@ -16,6 +16,7 @@ struct ContactsView: View {
 
     @State private var path: [Conversation] = []
     @State private var showAddFriend = false
+    @State private var showRequests = false
     @State private var copied = false
 
     /// 按名字排 —— 找人时人是按字母/拼音顺序回忆的，不是按聊天时间
@@ -28,6 +29,7 @@ struct ContactsView: View {
             AppPage {
                 ScrollView {
                     VStack(spacing: 14) {
+                        newFriendsCard
                         myCodeCard
                         if sorted.isEmpty { emptyHint } else { friendList }
                     }
@@ -53,12 +55,61 @@ struct ContactsView: View {
                 }
             }
             // 环境要显式传进弹窗 —— 这个坑踩过两次了
+            .sheet(isPresented: $showRequests) {
+                FriendRequestsView()
+                    .environment(store)
+                    .environment(auth)
+            }
             .sheet(isPresented: $showAddFriend) {
                 AddFriendView()
                     .environment(store)
                     .environment(auth)
             }
         }
+    }
+
+    // MARK: - 新的朋友
+
+    /// 待处理的申请入口。
+    ///
+    /// 单独摆在最上面，带一个数字 —— 因为它是**待办**，不是联系人。
+    /// 没有待办时它也在，但安安静静的（没有数字）。
+    private var newFriendsCard: some View {
+        Button {
+            Haptics.tap()
+            showRequests = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.badge.clock")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 38, height: 38)
+                    .background(Theme.accentSoft,
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                Text("新的朋友")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+
+                Spacer(minLength: 0)
+
+                if !store.incomingRequests.isEmpty {
+                    Text("\(store.incomingRequests.count)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Theme.danger, in: Capsule())
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .padding(14)
+            .card()
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 我的用户名

@@ -108,6 +108,108 @@ final class SupabaseChatService: ChatService {
             .sorted { $0.lastTime > $1.lastTime }
     }
 
+    // ========================================================================
+    // 好友申请
+    // ========================================================================
+
+    func findProfile(username: String) async throws -> ProfileSummary {
+        let name = Username.normalize(username)
+        guard Username.isValid(name) else { throw ChatError.usernameNotFound }
+
+        let rows: [ProfileRow] = try await client.get(
+            "/rest/v1/profiles",
+            query: [
+                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "username", value: "eq.\(name)"),
+                URLQueryItem(name: "limit", value: "1"),
+            ],
+            as: [ProfileRow].self
+        )
+        guard let row = rows.first else { throw ChatError.usernameNotFound }
+
+        return ProfileSummary(id: row.id,
+                              displayName: row.displayName,
+                              username: row.username ?? "",
+                              avatarSeed: row.avatarSeed,
+                              avatarURL: row.avatarUrl.flatMap(URL.init(string:)))
+    }
+
+    func sendFriendRequest(username: String, note: String?) async throws {
+        let name = Username.normalize(username)
+        guard Username.isValid(name) else { throw ChatError.usernameNotFound }
+
+        do {
+            let _: UUID = try await client.post(
+                "/rest/v1/rpc/send_friend_request",
+                body: SendRequestBody(targetUsername: name, note: note),
+                as: UUID.self
+            )
+        } catch {
+            throw Self.translateRequestError(error)
+        }
+    }
+
+    func loadIncomingRequests() async throws -> [FriendRequest] {
+        guard let myID else { return [] }
+
+        let rows: [FriendRequestRow] = try await client.get(
+            "/rest/v1/friend_requests",
+            query: [
+                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "to_id", value: "eq.\(myID.uuidString.lowercased())"),
+                URLQueryItem(name: "status", value: "eq.pending"),
+                URLQueryItem(name: "order", value: "created_at.desc"),
+            ],
+            as: [FriendRequestRow].self
+        )
+        guard !rows.isEmpty else { return [] }
+
+        // 申请人的资料：**一次查完**，不要一个申请查一次 ——
+        // 那又是"N 条申请 N 次请求"，和会话列表那里是同一个坑。
+        let ids = rows.map { $0.fromId.uuidString.lowercased() }.joined(separator: ",")
+        let profiles: [ProfileRow] = try await client.get(
+            "/rest/v1/profiles",
+            query: [
+                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "id", value: "in.(\(ids))"),
+            ],
+            as: [ProfileRow].self
+        )
+        let byID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+
+        return rows.compactMap { row in
+            guard let profile = byID[row.fromId] else { return nil }
+            return FriendRequest(id: row.id,
+                                 fromID: row.fromId,
+                                 fromName: profile.displayName,
+                                 fromUsername: profile.username ?? "",
+                                 fromAvatarURL: profile.avatarUrl.flatMap(URL.init(string:)),
+                                 note: row.note,
+                                 createdAt: row.createdAt)
+        }
+    }
+
+    func respondToRequest(_ id: FriendRequest.ID, accept: Bool) async throws {
+        do {
+            let _: Bool = try await client.post(
+                "/rest/v1/rpc/respond_friend_request",
+                body: RespondRequestBody(requestId: id.uuidString.lowercased(), accept: accept),
+                as: Bool.self
+            )
+        } catch {
+            throw Self.translateRequestError(error)
+        }
+    }
+
+    /// 翻译"申请"相关的报错。认不出来就**原样端上去**（不再吞掉）。
+    private static func translateRequestError(_ error: Error) -> Error {
+        guard case SupabaseError.http(_, let message) = error else { return error }
+        if message.contains("没有这个人") { return ChatError.usernameNotFound }
+        if message.contains("不能加自己") { return ChatError.cannotAddSelf }
+        if message.contains("已经是好友") { return ChatError.alreadyFriends("你们已经是好友了。") }
+        return ChatError.unknown(message)
+    }
+
     func removeFriend(_ id: Friend.ID) async throws {
         // 走数据库函数，因为它要在服务端**一次删两行**（我→他、他→我）。
         // 客户端直连 DELETE 只能删到自己那行，见 supabase/remove-friend.sql。
@@ -349,6 +451,41 @@ struct NewMessageRow: Encodable {
 
 /// 加好友时发给数据库函数的参数。
 /// 键名必须和函数签名里的参数名一致（`username`）。
+/// 发好友申请。
+///
+/// ⚠️ **键名必须和数据库函数的参数名一字不差。**
+/// 函数签名是 `send_friend_request(target_username text, note text)`，
+/// 所以这里显式写出 CodingKeys —— **不依赖编码器的命名转换策略**。
+/// 上次加好友失败就是因为这个（发成了 username，服务器找不到函数）。
+private struct SendRequestBody: Encodable {
+    let targetUsername: String
+    let note: String?
+
+    enum CodingKeys: String, CodingKey {
+        case targetUsername = "target_username"
+        case note
+    }
+}
+
+/// 同意 / 拒绝。函数签名是 `respond_friend_request(request_id uuid, accept boolean)`。
+private struct RespondRequestBody: Encodable {
+    let requestId: String
+    let accept: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case accept
+    }
+}
+
+/// 申请表的行
+private struct FriendRequestRow: Decodable {
+    let id: UUID
+    let fromId: UUID
+    let note: String?
+    let createdAt: Date
+}
+
 /// 只传一个目标 id 的请求体（删好友用）。
 private struct TargetBody: Encodable {
     let target: String

@@ -87,6 +87,21 @@ final class MockChatService: ChatService {
     ///
     /// 这一点很重要：如果每次加都随机生成一个人，
     /// 那"加两次会不会变成两个好友"这类问题就永远测不出来。
+    func findProfile(username: String) async throws -> ProfileSummary {
+        let name = Username.normalize(username)
+        guard Username.isValid(name) else { throw ChatError.usernameNotFound }
+        // 示例模式下没有别人，永远找不到
+        throw ChatError.usernameNotFound
+    }
+
+    func sendFriendRequest(username: String, note: String?) async throws {
+        throw ChatError.usernameNotFound
+    }
+
+    func loadIncomingRequests() async throws -> [FriendRequest] { [] }
+
+    func respondToRequest(_ id: FriendRequest.ID, accept: Bool) async throws {}
+
     func removeFriend(_ id: Friend.ID) async throws {
         // 示例模式下没有"服务器上的关系"要解除，本地清掉就够了
     }

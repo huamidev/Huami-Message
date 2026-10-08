@@ -56,6 +56,21 @@ protocol ChatService {
     /// 用户名是公开的：**任何人都能加你**（用户已确认接受这一点）。
     func addFriend(username: String) async throws -> Friend
 
+    /// 按用户名找一个人（用来先看他的主页，再决定加不加）。
+    func findProfile(username: String) async throws -> ProfileSummary
+
+    /// 发一条好友申请。
+    ///
+    /// 注意它**不会**立刻成为好友 —— 要等对方同意。
+    /// （以前是直接加上的，那等于任何人都能往你的好友列表里塞自己。）
+    func sendFriendRequest(username: String, note: String?) async throws
+
+    /// 拉"发给我的、还没处理的"申请。
+    func loadIncomingRequests() async throws -> [FriendRequest]
+
+    /// 同意或拒绝一条申请。
+    func respondToRequest(_ id: FriendRequest.ID, accept: Bool) async throws
+
     /// 删除好友（**双向**：两边都解除）。
     ///
     /// 注意它和「删除聊天记录」是两件事：
@@ -73,6 +88,7 @@ protocol ChatService {
 enum ChatError: LocalizedError, Equatable {
 
     case usernameNotFound
+    case requestAlreadyPending
     case alreadyFriends(String)
     case cannotAddSelf
     case network
@@ -80,6 +96,9 @@ enum ChatError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
+        case .requestAlreadyPending:
+            "你已经发过申请了，等对方处理。"
+
         case .usernameNotFound:
             "没找到这个人。检查一下用户名有没有输错？"
         case .alreadyFriends(let name):

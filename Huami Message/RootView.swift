@@ -238,7 +238,10 @@ struct RootView: View {
         // 切回前台 → 轻量刷新一次好友资料（昵称、头像色）
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, auth.isSignedIn else { return }
-            Task { await store.refreshFriends() }
+            Task {
+                await store.refreshFriends()
+                await store.refreshRequests()
+            }
         }
         .task(id: auth.isSignedIn) {
             // 开发用开关
@@ -260,6 +263,7 @@ struct RootView: View {
             guard auth.isSignedIn else { return }
 
             await store.start()
+            await store.refreshRequests()
 
             // 开发自检：进主界面之后再退出登录，验证会不会回到登录页
             if DevFlags.devSignOut {

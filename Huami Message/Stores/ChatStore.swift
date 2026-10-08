@@ -370,6 +370,51 @@ final class ChatStore {
         messagesByFriend[friendID] = nil
     }
 
+    // MARK: - 好友申请
+
+    /// 收到的、还没处理的申请。
+    ///
+    /// 没有推送，所以它只在**打开 App / 切回前台**时刷新一次 ——
+    /// 对方要等你打开才看得到，不是手机弹窗提醒。
+    private(set) var incomingRequests: [FriendRequest] = []
+
+    /// 拉一次"发给我的申请"。
+    func refreshRequests() async {
+        guard !DevFlags.offline else { return }
+        do {
+            incomingRequests = try await remote.loadIncomingRequests()
+            AppLog.info(.data, "好友申请：\(incomingRequests.count) 条待处理")
+        } catch {
+            // 和刷新好友一样：不打扰用户。少几个红点比弹个错误强。
+            AppLog.error(.network, "拉好友申请失败：\(error.localizedDescription)")
+        }
+    }
+
+    /// 按用户名找人（先看他主页，再决定加不加）。
+    func searchProfile(username: String) async throws -> ProfileSummary {
+        try await remote.findProfile(username: username)
+    }
+
+    /// 发申请。
+    ///
+    /// **不会立刻成为好友** —— 要等对方同意。
+    func sendFriendRequest(username: String, note: String?) async throws {
+        try await remote.sendFriendRequest(username: username, note: note)
+    }
+
+    /// 同意 / 拒绝一条申请。
+    func respond(to request: FriendRequest, accept: Bool) async throws {
+        try await remote.respondToRequest(request.id, accept: accept)
+
+        // 本地立刻移除，界面马上有反应（不等下次刷新）
+        incomingRequests.removeAll { $0.id == request.id }
+
+        if accept {
+            // 同意了就把好友列表拉一次，他才会出现在消息列表里
+            await refreshFriends()
+        }
+    }
+
     /// 删除好友（双向）。
     ///
     /// ⚠️ **顺序很重要：先让服务器删成功，再清本地。**

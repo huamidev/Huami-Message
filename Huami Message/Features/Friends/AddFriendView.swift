@@ -20,6 +20,13 @@ struct AddFriendView: View {
 
     @State private var inputCode = ""
     @State private var isAdding = false
+
+    /// 找到的人（先看他主页，再决定加不加）
+    @State private var found: ProfileSummary?
+    /// 附言
+    @State private var note = ""
+    /// 申请已发出
+    @State private var sent = false
     @State private var errorMessage: String?
     @State private var addedName: String?
     @State private var copied = false
@@ -148,7 +155,7 @@ struct AddFriendView: View {
                     .autocorrectionDisabled()
                     .focused($inputFocused)
                     .submitLabel(.go)
-                    .onSubmit { add() }
+                    .onSubmit { search() }
                     .onChange(of: inputCode) { _, newValue in
                         // ⚠️ 这里原来写死成「强制大写 + 最多 8 位」——
                         // 那是**邀请码**的规矩（8 位大写字母数字）。
@@ -159,11 +166,11 @@ struct AddFriendView: View {
                         if cleaned != newValue { inputCode = cleaned }
                     }
 
-                Button(action: add) {
+                Button(action: search) {
                     if isAdding {
                         ProgressView().tint(.white).controlSize(.small)
                     } else {
-                        Text("添加")
+                        Text("查找")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
                     }
@@ -181,7 +188,13 @@ struct AddFriendView: View {
             .background(Theme.surfaceAlt,
                         in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            if let addedName {
+            if let found {
+                profileCard(found)
+            }
+
+            if sent {
+                feedbackRow("申请发出去了，等对方同意。", icon: "paperplane.fill", color: Theme.mint)
+            } else if let addedName {
                 feedbackRow("已添加 \(addedName)", icon: "checkmark.circle.fill", color: Theme.mint)
             } else if let errorMessage {
                 feedbackRow(errorMessage, icon: "exclamationmark.circle.fill", color: Theme.danger)
@@ -190,6 +203,127 @@ struct AddFriendView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .card()
+    }
+
+    /// 搜到人之后的那张卡片。
+    ///
+    /// 【为什么要先看主页，而不是直接加】
+    ///
+    /// 用户名是公开的，输对一个名字**不代表你想加的就是这个人**
+    ///（同名、记错一个字母、别人给错名字都可能）。
+    /// 先看到头像和昵称，用户才有机会说"等等，不是他"。
+    ///
+    /// 而且加好友从此要对方同意 —— 看到是谁再发申请，
+    /// 对方也更容易判断该不该同意。
+    private func profileCard(_ profile: ProfileSummary) -> some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 11) {
+                Avatar(initial: profile.initial, seed: profile.avatarSeed,
+                       size: 46, url: profile.avatarURL)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(profile.displayName)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary)
+                    if !profile.username.isEmpty {
+                        Text("@" + profile.username)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            if sent {
+                EmptyView()
+            } else if isFriend(profile) {
+                // 已经是好友了就别让他再发申请 —— 服务器也会拒，
+                // 但在界面上先说清楚，省一次往返和一个莫名其妙的报错
+                feedbackRow("你们已经是好友了。", icon: "checkmark.circle.fill", color: Theme.mint)
+            } else {
+                TextField("说一句话（可以留空）", text: $note, axis: .vertical)
+                    .font(.system(size: 14))
+                    .lineLimit(1...3)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 9)
+                    .background(Theme.surfaceAlt,
+                                in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+                Button(action: sendRequest) {
+                    Text(isAdding ? "发送中…" : "发送好友申请")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Theme.accent,
+                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isAdding)
+            }
+        }
+        .padding(12)
+        .background(Theme.surfaceAlt.opacity(0.6),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private func isFriend(_ profile: ProfileSummary) -> Bool {
+        store.conversations.contains { $0.friend.id == profile.id }
+    }
+
+    /// 先找人，不直接加。
+    private func search() {
+        guard canAdd else { return }
+        inputFocused = false
+        Haptics.tap()
+
+        withAnimation(.snappy(duration: 0.2)) {
+            found = nil
+            sent = false
+            addedName = nil
+            errorMessage = nil
+        }
+        isAdding = true
+
+        Task {
+            do {
+                let profile = try await store.searchProfile(username: inputCode)
+                withAnimation(.snappy(duration: 0.25)) { found = profile }
+            } catch {
+                withAnimation(.snappy(duration: 0.2)) {
+                    errorMessage = (error as? LocalizedError)?.errorDescription
+                        ?? "没找到这个人。"
+                }
+                Haptics.warning()
+            }
+            isAdding = false
+        }
+    }
+
+    /// 发申请。**不是直接加好友。**
+    private func sendRequest() {
+        guard let profile = found, !isAdding else { return }
+        Haptics.tap()
+        isAdding = true
+
+        Task {
+            do {
+                try await store.sendFriendRequest(username: profile.username,
+                                                  note: note.trimmingCharacters(in: .whitespacesAndNewlines))
+                withAnimation(.snappy(duration: 0.25)) {
+                    sent = true
+                    note = ""
+                }
+                Haptics.success()
+            } catch {
+                errorMessage = (error as? LocalizedError)?.errorDescription
+                    ?? "申请没发出去，等一下再试。"
+                Haptics.warning()
+            }
+            isAdding = false
+        }
     }
 
     private var canAdd: Bool { Username.isValid(inputCode) && !isAdding }
@@ -207,38 +341,6 @@ struct AddFriendView: View {
         .transition(.opacity)
     }
 
-    private func add() {
-        guard canAdd else { return }
-        inputFocused = false
-        Haptics.tap()
-
-        withAnimation(.snappy(duration: 0.2)) {
-            isAdding = true
-            errorMessage = nil
-            addedName = nil
-        }
-
-        Task {
-            do {
-                try await store.addFriend(username: inputCode)
-                // 加成功之后立刻能看出加的是谁 —— 只显示"成功"两个字的提示是没有用的
-                let name = store.conversations.first { $0.friend.id == friendIDForInput }?.friend.name
-                withAnimation(.snappy(duration: 0.25)) {
-                    isAdding = false
-                    addedName = name ?? "好友"
-                    inputCode = ""
-                }
-                Haptics.success()
-            } catch {
-                withAnimation(.snappy(duration: 0.25)) {
-                    isAdding = false
-                    errorMessage = (error as? ChatError)?.errorDescription
-                        ?? "加好友失败，等一下再试。"
-                }
-                Haptics.warning()
-            }
-        }
-    }
 
     /// 加完之后从会话列表里找出刚加的那个人（用来显示名字）
     private var friendIDForInput: Friend.ID {
