@@ -44,6 +44,9 @@ final class ChatStore {
         self.remote = remote
     }
 
+    /// 当前用的是不是假数据（界面据此显示「演示数据」标识）
+    var isDemoData: Bool { remote.isDemoData }
+
     // MARK: - 读
 
     /// 取某个好友的消息（界面用）
@@ -65,6 +68,10 @@ final class ChatStore {
         guard conversations.isEmpty else { return }
 
         // ── ① 本地优先 ──
+        //
+        // 这一段的速度就是"打开 App 有多快"。所以给它计时 ——
+        // 以后消息攒到几千条时，这行日志能告诉你有没有变慢。
+        let watch = Stopwatch()
         let localConversations = local.loadConversations()
 
         if localConversations.isEmpty {
@@ -74,9 +81,14 @@ final class ChatStore {
         } else {
             // 本地有数据：立刻铺满界面。用户这一刻就可以开始操作了。
             conversations = localConversations
+            var messageCount = 0
             for convo in localConversations {
-                messagesByFriend[convo.friend.id] = local.loadMessages(with: convo.friend.id)
+                let list = local.loadMessages(with: convo.friend.id)
+                messagesByFriend[convo.friend.id] = list
+                messageCount += list.count
             }
+            AppLog.info(.data,
+                "本地读取：\(localConversations.count) 个会话 / \(messageCount) 条消息，耗时 \(Stopwatch.format(watch.milliseconds))")
         }
 
         // ── ② 后台同步 ──
@@ -98,6 +110,7 @@ final class ChatStore {
     /// 失败**不抛出去、不影响界面**，只打一行日志。
     /// 这是"网络差也不能让 App 变难用"的具体做法。
     private func syncFromRemote() async {
+        let watch = Stopwatch()
         do {
             let remoteConversations = try await remote.loadConversations()
 
@@ -105,20 +118,18 @@ final class ChatStore {
                 local.save(friend: convo.friend)
 
                 let remoteMessages = try await remote.loadMessages(with: convo.friend.id)
-                for message in remoteMessages {
-                    // 注意用 saveFromRemote 而不是 save：
-                    // 它会跳过"本地还在发送中/发送失败"的消息，
-                    // 避免后台同步把用户刚发的消息状态冲掉。
-                    local.saveFromRemote(message)
-                }
+                // 注意用批量版本：一次落盘，而不是每条一个事务。
+                // 首次同步几百条历史时，这个差别是"能感觉到"和"感觉不到"的差别。
+                local.saveFromRemote(remoteMessages)
             }
 
             // 同步完了，重新从本地读一遍铺到界面上。
             // 注意这里读的还是**本地**，不是直接用服务器的返回值 ——
             // 这样"界面上显示的"和"数据库里存的"永远一致，不会出现对不上的情况。
             refreshFromLocal()
+            AppLog.info(.data, "后台同步完成，耗时 \(Stopwatch.format(watch.milliseconds))")
         } catch {
-            print("后台同步失败（界面不受影响）：", error)
+            AppLog.error(.data, "后台同步失败（界面不受影响）：\(String(describing: error))")
         }
     }
 

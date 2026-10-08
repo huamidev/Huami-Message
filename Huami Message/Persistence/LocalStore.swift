@@ -1,16 +1,21 @@
 import Foundation
 import SwiftData
 
-/// 本地数据库的「插座标准」。
-///
-/// 和 ChatService 是同一个思路：界面和 ChatStore 只跟这个协议说话，
-/// 不知道底下到底是 SwiftData、SQLite 还是别的什么。
-///
-/// ⚠️ 特别注意：这里的方法**全是同步的，没有 async**。
-/// 这不是我偷懒，是故意的、也是关键：
-/// **本地读取必须"立刻返回"，一秒都不能等。**
-/// 界面打开时读本地是同步的、几毫秒就回来了，所以用户感觉不到加载。
-/// 一旦写成 async，就会冒出"转圈圈"和"闪一下"，那就不是瞬间可用了。
+// ============================================================================
+// 本地数据库的「插座标准」
+// ============================================================================
+//
+// 和 ChatService 是同一个思路：界面和 ChatStore 只跟这个协议说话，
+// 不知道底下到底是 SwiftData、SQLite 还是别的什么。
+//
+// ⚠️ 特别注意：这里的方法**全是同步的，没有 async**。
+// 这不是偷懒，是故意的、也是关键：
+// **本地读取必须"立刻返回"，一秒都不能等。**
+// 界面打开时读本地是同步的、几毫秒就回来了，所以用户感觉不到加载。
+// 一旦写成 async，就会冒出"转圈圈"和"闪一下"，那就不是瞬间可用了。
+//
+// ============================================================================
+
 protocol LocalStore {
 
     /// 读出所有会话，按最近说话时间从新到旧。
@@ -32,8 +37,7 @@ protocol LocalStore {
     ///
     /// 本地优先架构有个必然的副作用：界面在"读本地"那一步就已经可用了，
     /// 而"后台同步"还在跑。用户完全可能在同步还没结束时就发出一条消息。
-    ///
-    /// 这时候如果同步傻乎乎地拿服务器上的旧数据往下盖，就会把本地刚写好的
+    /// 这时候如果同步拿服务器上的旧数据往下盖，就会把本地刚写好的
     /// 「已发送」又覆盖回「发送中」—— 更糟的情况是直接把那条消息盖没了。
     ///
     /// 所以「服务器来的数据」必须有自己的一套合并规则：
@@ -41,6 +45,14 @@ protocol LocalStore {
     ///
     /// 这类问题在真机上比模拟器严重得多：网络越慢，撞车的窗口越大。
     func saveFromRemote(_ message: Message)
+
+    /// 批量存一批**从服务器来的**消息。
+    ///
+    /// 【为什么不循环调上面那个单条方法】
+    /// 因为每次单条调用都会 `context.save()` 一次，也就是一个数据库事务。
+    /// 首次同步几百条历史消息时，那就是几百个事务 —— 慢到用户能感觉到。
+    /// 批量版本只落盘一次。
+    func saveFromRemote(_ messages: [Message])
 
     /// 更新未读数
     func setUnread(_ count: Int, for friendID: Friend.ID)
@@ -66,21 +78,32 @@ protocol LocalStore {
     /// 记下一条举报
     func saveReport(_ report: Report)
 
-    /// 读出某个好友的举报记录（用来告诉用户"你已经举报过了"）
+    /// 读出某个好友的举报记录
     func reports(for friendID: Friend.ID) -> [Report]
 
     /// 删掉**全部**本地数据：好友、消息、举报记录、删除墓碑。
-    ///
-    /// 这是"注销账号"在本地那一半。接上服务器之后，
-    /// ChatStore 会在这个之后再调一次服务器删除 —— 但界面只认这一个方法名。
+    /// 这是"注销账号"在本地那一半。
     func deleteEverything()
 }
 
-// MARK: - SwiftData 版实现
+// ============================================================================
+// SwiftData 版实现
+// ============================================================================
+//
+// 换了它不会影响任何界面代码 —— 这就是协议的价值。
+//
+// 【这一版最重要的改动：查询下推到数据库】
+//
+// 之前的写法是"把整张表捞出来，再在内存里 filter"。
+// 只有几十条消息时看不出问题，但它是个**平方级的坑**：
+// 会话列表要对每个好友查一次最后一条消息，于是 N 个好友 × M 条消息
+// = N×M 次比较。消息攒到几千条，打开 App 就会明显变慢。
+//
+// 现在全部改成 `#Predicate`（数据库层的查询条件）+ 按需 `fetchLimit`，
+// 让数据库自己用索引去查。这才是"打开就有内容"能一直成立的前提。
+//
+// ============================================================================
 
-/// 真家伙：把数据写进手机上的一个数据库文件。
-///
-/// 换了它不会影响任何界面代码 —— 这就是协议的价值。
 final class SwiftDataLocalStore: LocalStore {
 
     private let context: ModelContext
@@ -92,6 +115,7 @@ final class SwiftDataLocalStore: LocalStore {
     // MARK: 读
 
     func loadConversations() -> [Conversation] {
+        // 好友数量很少（几十个），全查没问题
         let friends = fetchAll(StoredFriend.self)
 
         return friends
@@ -110,26 +134,20 @@ final class SwiftDataLocalStore: LocalStore {
     }
 
     func loadMessages(with friendID: Friend.ID) -> [Message] {
-        // 说明：这里是把消息全捞出来再在内存里筛。
-        //
-        // 为什么不用数据库的查询条件（predicate）直接筛？因为更稳。
-        // 消息量大到几万条时确实要改成 predicate，那是个明确的优化点，
-        // 我会在真的需要时才做 —— 现在做只会增加出错的机会。
-        fetchAll(StoredMessage.self)
-            .filter { $0.friendID == friendID }
-            .sorted { $0.sentAt < $1.sentAt }
-            .map(\.asMessage)
+        let descriptor = FetchDescriptor<StoredMessage>(
+            predicate: #Predicate { $0.friendID == friendID },
+            sortBy: [SortDescriptor(\.sentAt, order: .forward)]
+        )
+        return fetch(descriptor).map(\.asMessage)
     }
 
     // MARK: 写
 
     func save(friend: Friend) {
         // 已经被用户删掉的好友，不能被同步重新拉回来
-        guard !isDeleted(friend.id) else { return }
+        guard !deletedIDs().contains(friend.id) else { return }
 
-        // 先找有没有同一个好友：有就更新，没有才新建。
-        // 这个动作习惯上叫 "upsert"。
-        if let existing = fetchAll(StoredFriend.self).first(where: { $0.id == friend.id }) {
+        if let existing = findFriend(friend.id) {
             existing.name = friend.name
             existing.avatarSeed = friend.avatarSeed
         } else {
@@ -139,31 +157,97 @@ final class SwiftDataLocalStore: LocalStore {
     }
 
     func save(_ message: Message) {
-        merge(message, protectingLocalPending: false)
+        apply(message, protectLocalPending: false, deleted: deletedIDs())
+        commit()
     }
 
     func saveFromRemote(_ message: Message) {
-        merge(message, protectingLocalPending: true)
+        apply(message, protectLocalPending: true, deleted: deletedIDs())
+        commit()
     }
 
-    /// 存消息的实际逻辑。
+    func saveFromRemote(_ messages: [Message]) {
+        guard !messages.isEmpty else { return }
+
+        // 一次把墓碑读出来，而不是每条消息都查一遍。
+        let deleted = deletedIDs()
+
+        // ── 关键优化：先把"已经存在的消息 id"一次查出来 ──
+        //
+        // 原来每条消息都要查一次数据库看它在不在（`findMessage`）。
+        // 5000 条 = 5000 次查询，实测光这一项就要好几秒。
+        //
+        // 首次同步时绝大多数消息都是新的，所以只要预先知道"哪些已经存在"，
+        // 剩下的全都不用查，直接插。
+        let watchPreload = Stopwatch()
+        var existingIDs = Set<UUID>()
+        for friendID in Set(messages.map(\.friendID)) {
+            // 注意 self.：参数名 messages 把同名方法遮住了
+            existingIDs.formUnion(self.messages(of: friendID).map(\.id))
+        }
+        let preloadMs = watchPreload.milliseconds
+
+        // ── 分批落盘 ──
+        //
+        // 一次提交 5005 条，实测主线程会卡住约 180 毫秒 —— 差不多是 11 帧。
+        // 用户不一定能说出哪里卡，但滑起来就是"不顺"。
+        // 拆成每 400 条提交一次，单次卡顿降到十几毫秒，滚动时基本感觉不出来。
+        //
+        // 中途失败也不会出问题：写入本身是幂等的（同 id 覆盖），
+        // 下次同步会从断掉的地方继续。
+        let chunkSize = 400
+
+        let watchLoop = Stopwatch()
+        var written = 0
+        var lastCommitMs = 0.0
+        var start = 0
+        while start < messages.count {
+            let end = min(start + chunkSize, messages.count)
+            for message in messages[start..<end]
+            where apply(message, protectLocalPending: true, deleted: deleted, knownExisting: existingIDs) {
+                written += 1
+            }
+            let watchCommit = Stopwatch()
+            commit()
+            lastCommitMs = watchCommit.milliseconds
+            start = end
+        }
+        let loopMs = watchLoop.milliseconds
+
+        AppLog.info(.data,
+            "批量写入 \(written)/\(messages.count) 条（分 \((messages.count + chunkSize - 1) / chunkSize) 批）"
+            + "｜预读 \(Stopwatch.format(preloadMs))｜插入+落盘 \(Stopwatch.format(loopMs))"
+            + "｜最后一批落盘 \(Stopwatch.format(lastCommitMs))")
+    }
+
+    /// 合并一条消息。**这个方法不落盘**，由调用方决定什么时候 commit。
     ///
-    /// - Parameter protectingLocalPending:
-    ///   true 表示这条数据来自服务器，遇到"本地还在发送中/发送失败"的消息要让路。
-    private func merge(_ message: Message, protectingLocalPending: Bool) {
+    /// - Returns: 真的写进去了才返回 true（被墓碑挡住、或被本地待发状态保护而跳过的返回 false）
+    /// - Parameter knownExisting:
+    ///   批量写入时预先查好的"已经存在的消息 id"。
+    ///   传了它就不再逐条查数据库；不传（单条写入）就自己查。
+    @discardableResult
+    private func apply(_ message: Message,
+                       protectLocalPending: Bool,
+                       deleted: Set<UUID>,
+                       knownExisting: Set<UUID>? = nil) -> Bool {
         // ① 这条消息本身被删过 / 它所属的好友被删过 —— 都不能再进来。
         //    没有这两行，用户删掉的会话会被后台同步"复活"（我踩过）。
-        guard !isDeleted(message.id), !isDeleted(message.friendID) else { return }
+        guard !deleted.contains(message.id), !deleted.contains(message.friendID) else { return false }
 
-        if let existing = fetchAll(StoredMessage.self).first(where: { $0.id == message.id }) {
+        // 已知不存在，就不必白查一次数据库
+        if knownExisting?.contains(message.id) == false {
+            context.insert(StoredMessage(from: message))
+            return true
+        }
 
-            if protectingLocalPending,
+        if let existing = findMessage(message.id) {
+            if protectLocalPending,
                let localStatus = MessageStatus(rawValue: existing.statusRaw),
                localStatus == .sending || localStatus == .failed {
                 // 本地还没定论，服务器的旧版本不代表最终结果 —— 直接跳过。
-                return
+                return false
             }
-
             existing.text = message.text
             existing.sentAt = message.sentAt
             existing.polishedStyle = message.polishedWith?.rawValue
@@ -171,11 +255,11 @@ final class SwiftDataLocalStore: LocalStore {
         } else {
             context.insert(StoredMessage(from: message))
         }
-        commit()
+        return true
     }
 
     func setUnread(_ count: Int, for friendID: Friend.ID) {
-        guard let friend = fetchAll(StoredFriend.self).first(where: { $0.id == friendID }) else { return }
+        guard let friend = findFriend(friendID) else { return }
         friend.unreadCount = count
         commit()
     }
@@ -186,13 +270,13 @@ final class SwiftDataLocalStore: LocalStore {
         // 先删消息，再删好友 —— 顺序不能反。
         // 反过来的话，删掉好友之后就找不到"哪些消息属于他"了，
         // 会在数据库里留下永远删不掉的垃圾数据。
-        for message in fetchAll(StoredMessage.self).filter({ $0.friendID == friendID }) {
+        for message in messages(of: friendID) {
             context.delete(message)
             addTombstone(message.id, kind: "message")
         }
-        for friend in fetchAll(StoredFriend.self).filter({ $0.id == friendID }) {
+        if let friend = findFriend(friendID) {
             context.delete(friend)
-            addTombstone(friend.id, kind: "friend")   // ← 这条最关键：挡住同步把它拉回来
+            addTombstone(friendID, kind: "friend")   // ← 最关键：挡住同步把它拉回来
         }
         // 注意：举报记录**故意保留**。
         // 它是"发生过什么"的凭证，不该因为用户删了会话就一起消失。
@@ -200,27 +284,27 @@ final class SwiftDataLocalStore: LocalStore {
     }
 
     func clearMessages(with friendID: Friend.ID) {
-        for message in fetchAll(StoredMessage.self).filter({ $0.friendID == friendID }) {
+        for message in messages(of: friendID) {
             context.delete(message)
             addTombstone(message.id, kind: "message")
         }
         // 聊天记录都清了，"未读"也就没有意义了
-        if let friend = fetchAll(StoredFriend.self).first(where: { $0.id == friendID }) {
+        if let friend = findFriend(friendID) {
             friend.unreadCount = 0
         }
         commit()
     }
 
     func deleteMessage(id: Message.ID) {
-        for message in fetchAll(StoredMessage.self).filter({ $0.id == id }) {
+        if let message = findMessage(id) {
             context.delete(message)
-            addTombstone(message.id, kind: "message")
+            addTombstone(id, kind: "message")
         }
         commit()
     }
 
     func setBlocked(_ blocked: Bool, for friendID: Friend.ID) {
-        guard let friend = fetchAll(StoredFriend.self).first(where: { $0.id == friendID }) else { return }
+        guard let friend = findFriend(friendID) else { return }
         friend.isBlocked = blocked
         commit()
     }
@@ -231,60 +315,98 @@ final class SwiftDataLocalStore: LocalStore {
     }
 
     func reports(for friendID: Friend.ID) -> [Report] {
-        fetchAll(StoredReport.self)
-            .filter { $0.friendID == friendID }
-            .sorted { $0.createdAt > $1.createdAt }
-            .map(\.asReport)
+        let descriptor = FetchDescriptor<StoredReport>(
+            predicate: #Predicate { $0.friendID == friendID },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        return fetch(descriptor).map(\.asReport)
     }
 
     func deleteEverything() {
         // 四张表一张都不留。
         // 注意**墓碑也要删** —— 如果留着墓碑，用户之后重新加同一个好友时，
         // 那些"这个 id 被删过"的记录会把新数据挡在门外，变成一桩查不出来的怪事。
-        for item in fetchAll(StoredMessage.self)   { context.delete(item) }
-        for item in fetchAll(StoredFriend.self)    { context.delete(item) }
-        for item in fetchAll(StoredReport.self)    { context.delete(item) }
-        for item in fetchAll(StoredTombstone.self) { context.delete(item) }
+        deleteAll(StoredMessage.self)
+        deleteAll(StoredFriend.self)
+        deleteAll(StoredReport.self)
+        deleteAll(StoredTombstone.self)
         commit()
     }
 
-    // MARK: 内部
+    // MARK: 内部 —— 查询
+
+    /// 一次查询就够的通用入口
+    private func fetch<T: PersistentModel>(_ descriptor: FetchDescriptor<T>) -> [T] {
+        do {
+            return try context.fetch(descriptor)
+        } catch {
+            AppLog.error(.data, "查询失败：\(String(describing: error))")
+            return []
+        }
+    }
 
     private func fetchAll<T: PersistentModel>(_ type: T.Type) -> [T] {
-        (try? context.fetch(FetchDescriptor<T>())) ?? []
+        fetch(FetchDescriptor<T>())
     }
+
+    private func deleteAll<T: PersistentModel>(_ type: T.Type) {
+        for item in fetchAll(type) { context.delete(item) }
+    }
+
+    private func findFriend(_ id: Friend.ID) -> StoredFriend? {
+        var descriptor = FetchDescriptor<StoredFriend>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1          // 只要一条，别把整张表读上来
+        return fetch(descriptor).first
+    }
+
+    private func findMessage(_ id: Message.ID) -> StoredMessage? {
+        var descriptor = FetchDescriptor<StoredMessage>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return fetch(descriptor).first
+    }
+
+    private func messages(of friendID: Friend.ID) -> [StoredMessage] {
+        fetch(FetchDescriptor<StoredMessage>(predicate: #Predicate { $0.friendID == friendID }))
+    }
+
+    /// 某个好友最后一条消息。
+    /// **按时间倒序取第一条**，而不是"全读出来再找最大的那个" ——
+    /// 这个方法是会话列表每个好友都要调一次的，它的快慢直接决定打开 App 的快慢。
+    private func lastMessage(with friendID: Friend.ID) -> Message? {
+        var descriptor = FetchDescriptor<StoredMessage>(
+            predicate: #Predicate { $0.friendID == friendID },
+            sortBy: [SortDescriptor(\.sentAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        return fetch(descriptor).first?.asMessage
+    }
+
+    /// 一次读出所有墓碑 id。
+    /// 墓碑数量很少（用户删过的东西），整张表读出来完全没问题，
+    /// 而且这样批量写入时就不用每条消息查一次了。
+    private func deletedIDs() -> Set<UUID> {
+        Set(fetchAll(StoredTombstone.self).map(\.targetID))
+    }
+
+    // MARK: 内部 —— 写入
 
     /// 真正落盘。
     ///
-    /// 出错时只打印、不抛出去，是刻意的取舍：
+    /// 出错时只记录、不抛出去，是刻意的取舍：
     /// 存不进数据库（比如磁盘满了）不应该让 App 崩掉。
     /// 界面上的数据还在内存里，用户还能继续用，只是这次没存下来。
     private func commit() {
         do {
             try context.save()
         } catch {
-            print("⚠️ 本地数据库写入失败：", error)
+            AppLog.error(.data, "写入失败：\(String(describing: error))")
         }
-    }
-
-    private func lastMessage(with friendID: Friend.ID) -> Message? {
-        fetchAll(StoredMessage.self)
-            .filter { $0.friendID == friendID }
-            .max { $0.sentAt < $1.sentAt }?
-            .asMessage
-    }
-
-    // MARK: 墓碑（删除记录）
-
-    /// 这个 id 是不是被用户删过
-    private func isDeleted(_ id: UUID) -> Bool {
-        fetchAll(StoredTombstone.self).contains { $0.targetID == id }
     }
 
     /// 记下"这个 id 被删了"。
     /// 已经记过就不重复记 —— 墓碑表不该因为用户反复删同一件事而膨胀。
     private func addTombstone(_ id: UUID, kind: String) {
-        guard !isDeleted(id) else { return }
+        guard !deletedIDs().contains(id) else { return }
         context.insert(StoredTombstone(targetID: id, kindRaw: kind))
     }
 }

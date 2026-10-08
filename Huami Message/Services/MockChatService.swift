@@ -30,6 +30,9 @@ final class MockChatService: ChatService {
 
     // MARK: - ChatService
 
+    /// 假数据 —— 界面上会显示一个「演示数据」的标识
+    let isDemoData = true
+
     func loadConversations() async throws -> [Conversation] {
         try await Task.sleep(for: latency)
 

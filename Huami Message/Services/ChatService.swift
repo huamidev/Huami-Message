@@ -16,6 +16,16 @@ import Foundation
 /// 墙上的插孔形状不变，所以你的电器（界面）不用改。
 protocol ChatService {
 
+    /// 当前用的是不是**假数据**。
+    ///
+    /// 为什么需要它：接上真服务器之前，App 里会有几个假好友（林一、妈妈……）。
+    /// 朋友通过 TestFlight 装上去会一脸问号，甚至以为 App 坏了。
+    /// 所以界面上要明说"这是演示数据"。
+    ///
+    /// 接上 Supabase 之后，那边的实现返回 false，这个标识就自动消失了 ——
+    /// 不用记得去删代码。
+    var isDemoData: Bool { get }
+
     /// 拉取会话列表（消息首页要显示的那些行）
     func loadConversations() async throws -> [Conversation]
 

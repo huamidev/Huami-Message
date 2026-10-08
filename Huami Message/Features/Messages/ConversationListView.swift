@@ -30,6 +30,16 @@ struct ConversationListView: View {
         NavigationStack(path: $path) {
             AppPage {
                 List {
+                    // 演示数据标识。
+                    // 朋友装上去第一眼看到"林一/妈妈/老周"会以为是真好友，
+                    // 甚至怀疑自己的账号被盗了 —— 说清楚比让人猜好。
+                    if store.isDemoData {
+                        demoBanner
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    }
+
                     ForEach(store.conversations) { conversation in
                         // 用 Button 手动压栈，而不用 NavigationLink ——
                         // 因为 List 里的 NavigationLink 会自动加一个灰色小箭头，
@@ -97,6 +107,27 @@ struct ConversationListView: View {
                   let first = store.conversations.first else { return }
             path = [first]
         }
+    }
+
+    /// 「演示数据」横幅
+    private var demoBanner: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "testtube.2")
+                .font(.system(size: 12, weight: .semibold))
+            VStack(alignment: .leading, spacing: 1) {
+                Text("演示数据")
+                    .font(.system(size: 12.5, weight: .semibold))
+                Text("这些好友和消息都是假的，用来预览界面。接上服务器后会出现真实好友。")
+                    .font(.system(size: 11))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(Theme.warning)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(Theme.warning.opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var emptyHint: some View {
