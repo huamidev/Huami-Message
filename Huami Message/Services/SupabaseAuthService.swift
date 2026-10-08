@@ -135,10 +135,17 @@ final class SupabaseAuthService: AuthService {
     /// 这是**整个 App 能连续用下去的前提**：access token 一小时就过期，
     /// 没有这一步的话，用户用满一小时之后所有操作都会 401。
     func refreshSession() async -> Bool {
-        guard var session = Self.loadSession(),
-              let refresh = session.refreshToken,
-              !refresh.isEmpty
-        else { return false }
+        guard var session = Self.loadSession() else {
+            // 这条几乎不可能 —— 除非钥匙串被清了，或者 App 被重装过
+            AppLog.error(.network, "刷新失败：钥匙串里没有会话")
+            return false
+        }
+        guard let refresh = session.refreshToken, !refresh.isEmpty else {
+            // ⚠️ 这个才是常见的那种：会话存在，但**没存 refresh token**。
+            //    只存 access token 的话，一小时之后就没有任何办法续命了。
+            AppLog.error(.network, "刷新失败：会话里没有 refresh token")
+            return false
+        }
 
         struct Body: Encodable { let refresh_token: String }
         struct Response: Decodable {
@@ -151,7 +158,10 @@ final class SupabaseAuthService: AuthService {
             query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
             body: Body(refresh_token: refresh),
             as: Response.self
-        ) else { return false }
+        ) else {
+            AppLog.error(.network, "刷新失败：服务器拒绝了 refresh token（可能已被吊销）")
+            return false
+        }
 
         // ⚠️ 服务器有时会**同时换掉 refresh token**（轮换）。
         // 只更新 access 而丢掉新的 refresh，下次刷新就会失败 ——
@@ -161,6 +171,7 @@ final class SupabaseAuthService: AuthService {
             session.refreshToken = rotated
         }
         saveSession(session)
+        AppLog.info(.network, "token 已刷新")
 
         // 客户端的凭证和身份要一起设好，不然接下来还是拿旧的钥匙开门
         // 只换凭证，**不动身份** —— StoredSession 里没存 userID，

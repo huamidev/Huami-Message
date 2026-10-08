@@ -307,6 +307,13 @@ final class SupabaseClient {
         // ⚠️ 只重试**一次**（isRetry）。刷新之后再 401 说明是别的问题
         //（账号被删、token 被吊销），这时要老实报错 ——
         // 无脑重试会变成死循环，用户看到的是永远转圈。
+        if http.statusCode == 401, !isRetry {
+            if refreshHandler == nil {
+                // 这条日志很重要：说明 AppServices 忘了装回调。
+                // 装了但没生效 vs 压根没装，是两种完全不同的排查方向。
+                AppLog.error(.network, "401 但没有装刷新回调 —— 检查 AppServices.makeAuthService()")
+            }
+        }
         if http.statusCode == 401, !isRetry, let refreshHandler {
             AppLog.info(.network, "\(method.rawValue) \(path) → 401，换一次 token 再试")
             if await refreshHandler() {

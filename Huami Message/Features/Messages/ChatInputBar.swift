@@ -234,11 +234,22 @@ struct ChatInputBar: View {
         .frame(height: Self.controlHeight)
         .pillGlass()
         .contentShape(Capsule())
-        .gesture(
-            // DragGesture(minimumDistance: 0) 而不是长按手势：
-            // 它一次性给了按下、拖动、松手三件事，
-            // 而"上滑取消"正好需要一个拖动量。
-            // 长按手势只能告诉你按够了没有，拿不到手指位置。
+        // ⚠️ **highPriorityGesture，不是 gesture。**
+        //
+        // 用户的实测把原因指得很清楚：
+        //   「从按钮上滑或任何方向滑 → 秒开；单独按住不动 → 很慢」
+        //
+        // 滑动秒开、静止就慢，说明**有另一个手势在跟我抢**：
+        // 一动就分出胜负（对方因为移动而失败，我立刻拿到），
+        // 不动就得等系统判定（等到它确认这既不是点击也不是长按）。
+        //
+        // 那个"对方"是 .glassEffect —— 液态玻璃自带了按压识别。
+        // highPriorityGesture 让我的手势优先，不再等它。
+        //
+        // 依然用 DragGesture(minimumDistance: 0) 而不是长按手势：
+        // 它一次性给了按下、拖动、松手三件事，上滑取消需要拖动量；
+        // 长按手势拿不到手指位置。
+        .highPriorityGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
                     // ⚠️ begin() 是**同步**的，会当场把"已经在录了"置上。
