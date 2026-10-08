@@ -37,6 +37,9 @@ struct ChatView: View {
 
     @State private var assistantTask: Task<Void, Never>?
 
+    /// 输入框上面的工具栏是不是展开着
+    @State private var toolsOpen = DevFlags.openTools
+
     /// **是否自动分析对方的消息。**
     ///
     /// 【这是整个 App 里最需要想清楚的一个开关】
@@ -138,9 +141,40 @@ struct ChatView: View {
                         // 它的结果现在贴在每条消息下面（见 messageList 里那段），
                         // 手动触发放在右上角的菜单里。输入框上方不再摆东西。
 
+                        if toolsOpen {
+                            ChatToolbar(
+                                hasText: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                onCopy: {
+                                    Clipboard.write(draft)
+                                    toolsOpen = false
+                                },
+                                onPaste: {
+                                    if let pasted = Clipboard.read() {
+                                        // 接在原来内容的后面，而不是覆盖掉 ——
+                                        // 用户可能已经打了一半
+                                        draft += pasted
+                                    }
+                                    toolsOpen = false
+                                },
+                                onPhoto: {
+                                    // 发图片要等 Supabase Storage 开好（下一步就做）
+                                    toolsOpen = false
+                                },
+                                onPolish: {
+                                    toolsOpen = false
+                                    polishRequest = PolishRequest(original: draft)
+                                }
+                            )
+                        }
+
                         ChatInputBar(
                             text: $draft,
-                            onPolish: { polishRequest = PolishRequest(original: draft) },
+                            toolsOpen: toolsOpen,
+                            onToggleTools: {
+                                withAnimation(.snappy(duration: 0.24)) {
+                                    toolsOpen.toggle()
+                                }
+                            },
                             onSend: send
                         )
                     }

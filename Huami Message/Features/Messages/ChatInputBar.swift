@@ -2,21 +2,28 @@ import SwiftUI
 
 /// 悬浮在底部的输入栏。
 ///
-/// 三件事让它是「丝滑」的而不是「卡顿」的：
+/// 【布局为什么是「加号 / 发送」二选一】
 ///
-/// 1. 用 `TextField(axis: .vertical)` 让它自动长高（1 到 5 行）。
-///    以前要自己算高度、监听文字行数，现在系统全包了。
+/// 空着的时候右边是「+」，有字的时候变成「发送」。
+/// 这是微信、Telegram 那套做法，理由是：
 ///
-/// 2. 整个输入栏是一块**悬浮的毛玻璃**，压在消息流上面。
-///    消息从它底下滚过去时，你会看到模糊的颜色在动 ——
-///    这是毛玻璃最出彩的地方，也是为什么它适合用在输入框上。
+///   · 输入框右边**只有一个位置**。摆两个按钮，每个都得缩小，
+///     而这两个动作在时间上是**互斥的** —— 你没打字时不会想发送，
+///     你在打字时也不会想去翻工具栏。
+///   · 于是让它们轮流用那个位置，每个都能做得够大、够好点。
 ///
-/// 3. 发送按钮在没打字时是缩小的、透明的，有字时「啵」地弹出来并亮起。
-///    这个即时反馈很重要：用户不用确认就知道「现在可以发了」。
+/// 【为什么把 ✨ 从输入栏拿掉了】
+///
+/// 它原来占着输入框左边第一格。但既然要做工具栏，
+/// 「AI 改写」就该和「复制」「粘贴」待在一起 ——
+/// 它们是同一类东西（对这句话做点什么），不该一个在左一个在右。
 struct ChatInputBar: View {
 
     @Binding var text: String
-    var onPolish: () -> Void
+
+    /// 工具栏是不是打开着（用来把「+」转成「×」）
+    var toolsOpen: Bool
+    var onToggleTools: () -> Void
     var onSend: () -> Void
 
     @FocusState private var isFocused: Bool
@@ -28,49 +35,44 @@ struct ChatInputBar: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
 
-            // ── AI 润色的入口 ──
-            // 放在输入框**左边第一格**，而不是塞进「更多」菜单。
-            // 原因：这是这个产品的核心动作，必须一步可达。
-            // 一个功能藏两层菜单，用户一辈子都不会发现它。
-            Button(action: onPolish) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: 38, height: 38)
-                    .background(Theme.surfaceAlt, in: Circle())
-                    .overlay {
-                        Circle().strokeBorder(Theme.separator, lineWidth: 0.8)
-                    }
-            }
-            .disabled(!canSend)          // 没打字时没什么可润色的
-            .opacity(canSend ? 1 : 0.35)
-            .accessibilityLabel("AI 润色这句话")
-
             TextField("说点什么…", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 16))
                 .lineLimit(1...5)
                 .focused($isFocused)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
 
-            Button(action: onSend) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Theme.myBubbleGradient, in: Circle())
+            // 那一个位置：要么是发送，要么是加号
+            ZStack {
+                if canSend {
+                    Button(action: onSend) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(Theme.myBubbleGradient, in: Circle())
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                    .accessibilityLabel("发送")
+                } else {
+                    Button(action: onToggleTools) {
+                        Image(systemName: toolsOpen ? "xmark" : "plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(width: 34, height: 34)
+                            .background(Theme.surfaceAlt, in: Circle())
+                            .overlay { Circle().strokeBorder(Theme.separator, lineWidth: 0.8) }
+                            .rotationEffect(.degrees(toolsOpen ? 90 : 0))
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                    .accessibilityLabel(toolsOpen ? "收起工具栏" : "打开工具栏")
+                }
             }
-            .disabled(!canSend)
-            .scaleEffect(canSend ? 1 : 0.7)
-            .opacity(canSend ? 1 : 0)
-            .animation(.snappy(duration: 0.22), value: canSend)
-            .accessibilityLabel("发送")
+            .animation(.snappy(duration: 0.2), value: canSend)
+            .animation(.snappy(duration: 0.2), value: toolsOpen)
         }
         .padding(8)
-        // 这里用 regular 而不是 ultraThin：
-        // 打字是需要看清文字的场景，玻璃要「厚」一点，保证可读性。
-        // 毛玻璃的厚度选择是有功能考虑的，不只是审美。
+        // 用 regular 而不是 ultraThin：打字要看清文字，玻璃得「厚」一点。
+        // 毛玻璃的厚度是有功能考虑的，不只是审美。
         .card(.elevated, radius: 26)
         .padding(.horizontal, 12)
         .padding(.bottom, 6)

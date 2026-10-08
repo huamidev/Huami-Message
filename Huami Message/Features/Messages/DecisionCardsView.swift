@@ -1,246 +1,144 @@
 import SwiftUI
 
-/// 小助手的判断，**直接渲染在聊天记录里**。
+/// 小助手贴在消息下面的判断。
 ///
-/// 【为什么不做成弹窗，而是插在对话中间】
+/// 【样子是照着参考图改的】
 ///
-/// 因为这个判断是"针对上面那段对话"的。
-/// 放在弹窗里，用户得记住刚才说了什么；插在对话下面，它就在该在的位置上，
-/// 而且滑上去看一眼原文再滑下来，永远是同一屏之内的事。
+/// 第一版我做成了一堆**带彩色进度条和百分比徽章的卡片** ——
+/// 自己看着挺精致，但和用户要的效果不是一回事。
 ///
-/// 【为什么每个选项都有一条长度不同的底色】
+/// 参考图里是这样的：**一整块灰底、纯文字、每行一个「- 选项：百分比」**。
+/// 像一条普通消息，而不是一个仪表盘。
 ///
-/// 数字（72%）要读，长度不用读 —— 一眼就分出主次。
-/// 人在不知道该怎么回消息的那一刻是慌的，能少读一个字就少读一个字。
+/// 差别不只是好不好看：
+///   · 进度条适合"比较两个数谁大"；但这里的百分比**不是一个可比的量**，
+///     它只是模型给出的可能性。画成条会让人误以为它精确。
+///   · 聊天界面里，**最不缺的就是视觉重量**。判断结果如果比消息本身还抢眼，
+///     用户会先看判断、后看对方说了什么 —— 那就本末倒置了。
+///
+/// 所以：灰底、等宽数字、克制。它应该像旁边坐了个朋友小声说话，
+/// 而不是弹出一块仪表盘。
 struct DecisionCardsView: View {
 
-    /// 状态提示（还在思考时显示）
-    let status: String?
-
-    /// 一个一个小方块
-    let blocks: [DecisionBlock]
-
-    /// 最后的建议动作
-    let recommendation: String?
-
-    /// 出错时要说的话。有它的时候不显示"还在想"，而是直接说清出了什么问题。
-    let error: String?
-
-    /// 这次把多少条消息发给了 AI（如实告知，是隐私承诺的一部分）
-    let sharedMessageCount: Int
+    var status: String?
+    var blocks: [DecisionBlock]
+    var recommendation: String?
+    var error: String?
+    var sharedMessageCount: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             label
 
             if let error {
-                errorCard(error)
-            } else if blocks.isEmpty {
-                thinkingCard
+                bubble {
+                    line(error, color: Theme.danger)
+                }
+            } else if blocks.isEmpty && recommendation == nil {
+                bubble { line(status ?? "正在读这段对话…", color: Theme.textSecondary) }
             } else {
-                ForEach(blocks) { block in
-                    blockView(block)
-                        // 方块一个一个冒出来 —— 这个动画让"它在想"这件事看得见
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.94, anchor: .top).combined(with: .opacity),
-                            removal: .opacity
-                        ))
+                bubble {
+                    VStack(alignment: .leading, spacing: 11) {
+                        ForEach(blocks) { block in
+                            blockLines(block)
+                        }
+                        if let recommendation, !recommendation.isEmpty {
+                            line("建议：" + recommendation, color: Theme.textPrimary)
+                        }
+                    }
                 }
             }
-
-            if let recommendation {
-                recommendationCard(recommendation)
-                    .transition(.scale(scale: 0.94, anchor: .top).combined(with: .opacity))
-            }
         }
-        .animation(.snappy(duration: 0.3), value: blocks.count)
-        .animation(.snappy(duration: 0.3), value: recommendation)
     }
 
-    // MARK: - 顶部标识
+    // MARK: - 名称行
 
+    /// 参考图里这行是「Jev:」。我们用「小助手」+ 一句"读了最近几条" ——
+    /// 后面那半句是有用的：用户能一眼看到**这次到底发出去了多少**。
     private var label: some View {
         HStack(spacing: 5) {
             Image(systemName: "sparkles")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9.5))
             Text("小助手")
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.system(size: 11.5, weight: .medium))
             if sharedMessageCount > 0 {
                 Text("· 读了最近 \(sharedMessageCount) 条")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.textTertiary)
+                    .font(.system(size: 11))
             }
         }
         .foregroundStyle(Theme.accent)
-        .padding(.leading, 4)
+        .padding(.leading, 3)
     }
 
-    // MARK: - 还在想
+    // MARK: - 灰底气泡
 
-    private var thinkingCard: some View {
-        HStack(spacing: 8) {
-            StreamingCaret()
-            Text(status ?? "正在读这段对话")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textSecondary)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
-        .background(Theme.surfaceAlt,
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    private func bubble<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Theme.surfaceAlt,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    /// 失败
-    private func errorCard(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .font(.system(size: 12))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("这次没成功")
-                    .font(.system(size: 12, weight: .semibold))
-                Text(message)
-                    .font(.system(size: 12.5))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(Theme.danger)
-        .padding(12)
-        .background(Theme.danger.opacity(0.09),
-                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    /// 把 AI 返回的文字当成 Markdown 渲染。
+    ///
+    /// 【为什么需要这一步】
+    ///
+    /// 模型（DeepSeek 也是）习惯用 `**加粗**` 标重点。
+    /// 直接当纯文字显示的话，用户会看到一堆星号 ——
+    /// 上面那张验证截图里就是「**第一句里不要出现「因为」**」，
+    /// 一眼就露馅，像是程序没做完。
+    ///
+    /// 用 `.inlineOnlyPreservingWhitespace`：只解释**行内**格式
+    ///（加粗、斜体、行内代码），**保留换行** ——
+    /// 判断结果本来就是多行的，如果让它按块级 Markdown 解析，
+    /// 换行会被吃掉、缩进会乱。
+    ///
+    /// 解析失败就原样显示，不至于因为一个星号把整段吞掉。
+    private func styled(_ text: String) -> AttributedString {
+        (try? AttributedString(
+            markdown: text,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(text)
     }
 
-    // MARK: - 一个方块
+    private func line(_ text: String, color: Color) -> some View {
+        Text(styled(text))
+            .font(.system(size: 14))
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - 一个判断块
 
     @ViewBuilder
-    private func blockView(_ block: DecisionBlock) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+    private func blockLines(_ block: DecisionBlock) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // 小标题（参考图里那种「当前真实意图」），比正文略重一点
             if let title = block.title, !title.isEmpty {
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-            }
-
-            Text(block.prompt)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            switch block.kind {
-            case .options:
-                VStack(spacing: 5) {
-                    ForEach(block.options) { option in
-                        optionRow(option)
-                    }
-                }
-            case .level:
-                levelRow(block)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Theme.surfaceAlt,
-                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(Theme.separator, lineWidth: 0.5)
-        )
-    }
-
-    // MARK: - 一个选项（带长度底色）
-
-    private func optionRow(_ option: DecisionOption) -> some View {
-        HStack(spacing: 8) {
-            Text(option.label)
-                .font(.system(size: 12.5, weight: option.isStrong ? .semibold : .regular))
-                .foregroundStyle(option.isStrong ? Theme.textPrimary : Theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 6)
-
-            Text("\(option.percent)%")
-                .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
-                .foregroundStyle(option.isStrong ? Theme.accent : Theme.textTertiary)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(alignment: .leading) {
-            // 用 scaleEffect 画长度条，而不是 GeometryReader ——
-            // 这里只需要"按比例缩放"，不需要知道具体宽度，用不上那么重的工具。
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(option.isStrong
-                      ? Theme.accent.opacity(0.14)
-                      : Theme.textTertiary.opacity(0.10))
-                .scaleEffect(x: max(0.03, CGFloat(option.percent) / 100), anchor: .leading)
-        }
-    }
-
-    // MARK: - 量级（危险等级那种）
-
-    private func levelRow(_ block: DecisionBlock) -> some View {
-        let level = block.level ?? 0
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text("\(level)")
-                    .font(.system(size: 26, weight: .bold).monospacedDigit())
-                    .foregroundStyle(levelColor(level))
-                Text("/ 10")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textTertiary)
-                Spacer(minLength: 0)
-                if let caption = block.levelCaption {
-                    Text(caption)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.textTertiary)
-                }
-            }
-
-            // 十格刻度。人慌的时候需要一个刻度，"6 分"比"有点严重"有用。
-            HStack(spacing: 3) {
-                ForEach(1...10, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(i <= level ? levelColor(level) : Theme.separator)
-                        .frame(height: 5)
-                }
-            }
-        }
-    }
-
-    /// 量级的颜色：低绿、中黄、高红。
-    /// 颜色比数字先被看见，所以这一层是有实际作用的，不只是装饰。
-    private func levelColor(_ level: Int) -> Color {
-        switch level {
-        case ..<4:  Theme.mint
-        case 4..<8: Theme.warning
-        default:    Theme.danger
-        }
-    }
-
-    // MARK: - 最后那条建议
-
-    private func recommendationCard(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "arrow.turn.down.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.accent)
-                .padding(.top, 1)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("建议动作")
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-                Text(LocalizedStringKey(text))
-                    .font(.system(size: 13.5))
-                    .lineSpacing(3)
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer(minLength: 0)
+            // 提问 / 判断的引子
+            if !block.prompt.isEmpty, block.prompt != block.title {
+                line(block.prompt, color: Theme.textPrimary)
+            }
+
+            // 选项：**就是一行「- 是：7%」**，不用进度条
+            ForEach(block.options) { option in
+                line("- \(option.label)：\(option.percent)%",
+                     color: option.isRecommended ? Theme.textPrimary : Theme.textSecondary)
+            }
+
+            // 程度：参考图里是「危险等级：9 / 10」这样一行
+            if let level = block.level {
+                line("\(block.levelCaption ?? "程度")：\(level) / 10",
+                     color: Theme.textPrimary)
+            }
         }
-        .padding(12)
-        .background(Theme.accentSoft,
-                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 }

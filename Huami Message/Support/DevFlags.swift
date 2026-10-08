@@ -125,6 +125,11 @@ enum DevFlags {
         UserDefaults.standard.string(forKey: "incomingText") ?? ""
     }
 
+    /// 启动时自动展开输入框上面的工具栏（截图点不了「+」）
+    static var openTools: Bool {
+        UserDefaults.standard.bool(forKey: "openTools")
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")
