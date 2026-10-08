@@ -110,7 +110,8 @@ enum AuthError: LocalizedError, Equatable {
         case .passwordMismatch:  "两次输入的密码不一样。"
         case .emailAlreadyUsed:  "这个邮箱已经注册过了，直接登录就行。"
         case .emailConfirmationRequired:
-            "注册成功了。请去邮箱点一下确认链接，然后回来登录。"
+            "注册成功了。请去邮箱点一下确认链接，然后回来登录。\n\n"
+            + "如果几分钟内没收到，先看看垃圾箱。"
         case .wrongCredentials:  "邮箱或密码不对。"
         case .network:           "网络好像不太顺，等一下再试。"
         case .notSignedIn:       "你还没有登录。"

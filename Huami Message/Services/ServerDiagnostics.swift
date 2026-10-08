@@ -78,30 +78,22 @@ enum ServerDiagnostics {
             AppLog.info(.network, "自检：读 profiles 时遇到其它错误，跳过（\(error)）")
         }
 
-        // ── ② 邮箱验证开了没有 ──
-        do {
-            let settings: AuthSettings = try await client.get(
-                "/auth/v1/settings",
-                as: AuthSettings.self
-            )
-            if settings.mailerAutoconfirm == false {
-                issues.append(ServerIssue(
-                    id: "confirm-email",
-                    title: "邮箱验证还开着",
-                    detail: "开着的话，注册完必须去邮箱点确认链接才能登录。"
-                          + "而 Supabase 免费版自带的邮件服务一小时只发得了几封 —— "
-                          + "你朋友很可能根本收不到信，会以为 App 坏了。",
-                    steps: [
-                        "Supabase 控制台左侧点 Authentication",
-                        "找到 Sign In / Providers（有的版本叫 Providers），点 Email",
-                        "把 Confirm email 关掉",
-                        "点 Save",
-                    ]
-                ))
-            }
-        } catch {
-            AppLog.info(.network, "自检：读 auth 设置失败，跳过（\(error)）")
-        }
+        // ── ② （原"邮箱验证开着没有"这条检查已删除）──
+        //
+        // 【为什么要删掉一条有用的检查】
+        //
+        // 它本来是为了提醒"没配发信服务的话，用户收不到确认邮件"。
+        //
+        // 但后来用户接了自己的发信服务（Resend），**有意**开着邮箱验证 ——
+        // 这时候再报"邮箱验证还开着"就是**误报**，而且这条提示会永远挂在那里，
+        // 让人不再相信这个自检卡片。
+        //
+        // 问题是：客户端**检测不到**服务器有没有配自定义 SMTP
+        //（/auth/v1/settings 里没有这个字段，我实测确认过）。
+        // 既然区分不了"没配"和"配好了"，就不该在这里猜。
+        //
+        // 改成放在**真正出问题的地方**提示：注册完需要验证邮箱时，
+        // 那句话里会提醒"没收到就看看垃圾箱"。见 AuthError.emailConfirmationRequired。
 
         // ── ③ AI 云函数部署了没有 ──
         if !issues.isEmpty {
@@ -144,7 +136,5 @@ private struct PingProbe: Encodable {
     let mode = "ping"
 }
 
-/// `/auth/v1/settings` 里我们关心的字段
-private struct AuthSettings: Decodable {
-    let mailerAutoconfirm: Bool
-}
+// （原来这里还有一个 AuthSettings 结构体，用来读邮箱验证开关。
+//   那条检查删掉之后它就没用了，一并移除 —— 留着只会让人以为还有什么在用。）
