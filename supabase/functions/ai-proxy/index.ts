@@ -78,9 +78,19 @@ Deno.serve(async (req) => {
 
     // ── ② 读参数（payload 在上面已经解析过了）──
 
-    const apiKey = Deno.env.get("DEEPSEEK_API_KEY");
+    // ── 用谁的密钥：**用户自己填的优先** ──
+    //
+    // 这样朋友可以拿自己的 DeepSeek 账号用，花自己的钱。
+    // 对搭这个 App 的人来说，这是把成本交还给真正在用的人 ——
+    // 否则所有朋友的 AI 账单都压在一个人头上，人数一多就撑不住。
+    //
+    // 密钥只用于这一次请求，**不落库、不打日志**。
+    const personalKey = (req.headers.get("x-deepseek-key") ?? "").trim();
+    const apiKey = personalKey.length > 10
+      ? personalKey
+      : Deno.env.get("DEEPSEEK_API_KEY");
     if (!apiKey) {
-      return json({ error: "服务器没有配置 DEEPSEEK_API_KEY" }, 500);
+      return json({ error: "没有可用的 AI 密钥" }, 500);
     }
 
     const { messages, stream: shouldStream } = buildMessages(payload);

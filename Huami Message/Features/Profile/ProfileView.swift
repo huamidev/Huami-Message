@@ -26,6 +26,9 @@ struct ProfileView: View {
     /// 是否正在编辑资料
     @State private var showEditProfile = false
 
+    /// 是否打开「API 接入」
+    @State private var showAPIAccess = false
+
     var body: some View {
         NavigationStack {
             AppPage {
@@ -52,9 +55,16 @@ struct ProfileView: View {
         // **只要 App 能注册账号，就必须能在 App 内删掉它。**
         // 环境要显式传进弹窗（这个坑踩过三次了）
         .task {
+            if DevFlags.openAPI {
+                try? await Task.sleep(for: .seconds(2))
+                showAPIAccess = true
+            }
             guard DevFlags.openEditProfile else { return }
             try? await Task.sleep(for: .seconds(2))
             showEditProfile = true
+        }
+        .sheet(isPresented: $showAPIAccess) {
+            APIAccessView()
         }
         .sheet(isPresented: $showEditProfile) {
             if let account = auth.account {
@@ -206,6 +216,20 @@ struct ProfileView: View {
                 .padding(.bottom, 12)
 
             settingRow("AI 服务商", value: "DeepSeek", enabled: false)
+            divider
+
+            // 「API 接入」放在这里，而不是埋进隐私那一段：
+            // 它不是一个"我们的承诺"，而是**用户自己的一个选择** ——
+            // 想用自己的 AI 账号、花自己的钱，从这里进。
+            Button {
+                Haptics.tap()
+                showAPIAccess = true
+            } label: {
+                settingRow("API 接入",
+                           value: PersonalAIKey.isSet ? "用自己的密钥" : "用默认的",
+                           enabled: true)
+            }
+            .buttonStyle(.plain)
             divider
             Button {
                 Haptics.warning()

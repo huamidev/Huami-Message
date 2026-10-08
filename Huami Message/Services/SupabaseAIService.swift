@@ -145,7 +145,16 @@ final class SupabaseAIService: AIService {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let lines = try await client.streamLines(Self.functionPath, body: request)
+                    // 用户自己填了密钥就带上，服务器优先用它（花他自己的钱）。
+                    // 没填就什么都不发，服务器用默认那把。
+                    var headers: [String: String] = [:]
+                    if let personal = PersonalAIKey.value {
+                        headers["x-deepseek-key"] = personal
+                    }
+
+                    let lines = try await client.streamLines(Self.functionPath,
+                                                             body: request,
+                                                             headers: headers)
                     for try await line in lines {
                         if Task.isCancelled { break }
                         guard let event = Self.parse(line) else { continue }

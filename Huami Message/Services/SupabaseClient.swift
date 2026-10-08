@@ -108,13 +108,23 @@ final class SupabaseClient {
     /// 不然"打字机效果"就只能靠客户端假装，那是骗人的。
     ///
     /// `URLSession.bytes(for:)` 给的正是这种能力：一个可以逐行消费的字节流。
+    /// 流式 POST。
+    ///
+    /// `headers` 是给调用方加自定义头用的 —— 目前只有一个用途：
+    /// AI 服务要把**用户自己填的密钥**带上去（见 `PersonalAIKey`）。
+    /// 放在这里而不是写死，是因为密钥是"每个用户不一样"的东西，
+    /// 不该混进客户端的通用逻辑里。
     func streamLines<Body: Encodable>(_ path: String,
-                                      body: Body) async throws -> AsyncThrowingStream<String, Error> {
+                                      body: Body,
+                                      headers: [String: String] = [:]) async throws -> AsyncThrowingStream<String, Error> {
         var request = URLRequest(url: config.endpoint(path))
         request.httpMethod = "POST"
         request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken ?? config.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (name, value) in headers {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
         request.httpBody = try Self.encode(body)
         // 流式请求不能设太短的超时 —— 模型思考本来就要几秒
         request.timeoutInterval = 60

@@ -130,6 +130,11 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "openTools")
     }
 
+    /// 启动时自动打开「API 接入」
+    static var openAPI: Bool {
+        UserDefaults.standard.bool(forKey: "openAPI")
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")
