@@ -277,6 +277,23 @@ struct ChatView: View {
                 // 拿掉这行不会露出白边。
             }
         }
+        // ── 让我们的手势在屏幕底部优先于系统手势 ──
+        //
+        // 手机日志里的关键两行（注意**顺序**）：
+        //     <0x...> Gesture: System gesture gate timed out.
+        //     语音：手指按下
+        //
+        // 系统手势闸门**先**超时，我们的 onChanged 才触发 ——
+        // 也就是说那段等待发生在"手指按下"**之前**，
+        // 我们的计时器（从 claimStart 开始算）根本看不到它。
+        //
+        // 输入栏在最底下，正好是全面屏「home 指示条」那一片，
+        // 系统默认在那里优先。按住不动要等它判定"这不是系统手势"，
+        // 手指一移动它立刻让路 —— 这就是"滑动秒开、按住不动慢"的机制。
+        //
+        // ⚠️ 这个修饰符必须挂在**占住屏幕底部的那一整层**上（这一页），
+        //    挂在输入栏内部不生效 —— 我先挂在里面试过。
+        .defersSystemGestures(on: .bottom)
         .navigationTitle(conversation.friend.name)
         .navigationBarTitleDisplayMode(.inline)
         // 导航栏也做成毛玻璃 —— 消息从它下面滚过去时，
