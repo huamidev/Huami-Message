@@ -257,13 +257,28 @@ struct ChatInputBar: View {
 
     private func switchToVoice() {
         Haptics.tap()
-        focused.wrappedValue = false          // 先收键盘，不然切换时会顶一下
+        focused.wrappedValue = false   // 先收键盘，不然切换时会顶一下
         withAnimation(.snappy(duration: 0.24)) { voiceMode = true }
+
+        // 进语音模式就**预热音频会话** ——
+        // 这样等用户按下按钮时，只剩一句 record()，是立刻开始的。
+        // 不预热的话，按下之后要等一两百毫秒才开始采集，
+        // 用户说的头两个字会被吃掉（用户报的"按下之后有延迟"就是这个）。
+        //
+        // 代价：会话开着的时候状态栏有麦克风小圆点。这是系统行为，
+        // 关不掉 —— 除非不预热（那就回到有延迟）。所以只在语音模式里热。
+        Task {
+            if await recorder.warmUp() == false {
+                onVoiceProblem("没有麦克风权限。去「设置 → 隐私与安全性 → 麦克风」里打开。")
+            }
+        }
     }
 
     private func switchToText() {
         Haptics.tap()
         withAnimation(.snappy(duration: 0.24)) { voiceMode = false }
+        // 离开语音模式就把麦克风还回去（状态栏那个小圆点也就灭了）
+        recorder.coolDown()
         // 切回打字时把光标放回去 —— 用户切回来就是要打字的
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { focused.wrappedValue = true }
     }

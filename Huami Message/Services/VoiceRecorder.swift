@@ -41,6 +41,53 @@ final class VoiceRecorder {
     /// 最长时长。够说一件事了，也挡住"录着忘了"把存储撑爆。
     static let maximumSeconds: Double = 60
 
+    /// 音频会话是不是已经热着了。
+    private var isWarm = false
+
+    /// **预热**：进语音模式时调一次。
+    ///
+    /// 【为什么必须提前做 —— 这是"按住之后有延迟"的真正原因】
+    ///
+    /// 激活 AVAudioSession 要一两百毫秒，是整条链路里最慢的一步。
+    /// 原来它在按下按钮之后才做 —— 界面提示虽然立刻就亮了，
+    /// **但真正开始采集声音要等它做完**，用户说的头两个字就被吃掉了。
+    ///
+    /// 提前打开之后，按下时只剩一句 recorder.record()，是立刻开始的。
+    ///
+    /// 代价要说清楚：会话开着的时候，系统状态栏会显示**麦克风小圆点**。
+    /// 也就是说"停在语音模式"的那段时间里，小圆点是亮着的。
+    /// 这是系统行为，关不掉 —— 除非不预热（那就回到有延迟）。
+    /// 所以我们只在**语音模式**里预热，切回打字就立刻冷掉。
+    func warmUp() async -> Bool {
+        if isWarm { return true }
+
+        let allowed = await AVAudioApplication.requestRecordPermission()
+        guard allowed else {
+            AppLog.error(.network, "麦克风权限没拿到")
+            return false
+        }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+            try session.setActive(true)
+            isWarm = true
+            return true
+        } catch {
+            AppLog.error(.network, "音频会话预热失败：\(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// **冷掉**：离开语音模式时调一次，把麦克风还回去（小圆点也就灭了）。
+    func coolDown() {
+        guard !isRecording else { return }   // 正在录就别动
+        guard isWarm else { return }
+        isWarm = false
+        try? AVAudioSession.sharedInstance().setActive(false,
+                                                       options: .notifyOthersOnDeactivation)
+    }
+
     /// 开始录。返回 false 表示没拿到权限。
     ///
     /// 【为什么把界面反馈放在最前面 —— 一个真实的卡顿】
@@ -71,16 +118,21 @@ final class VoiceRecorder {
             return false
         }
 
-        let session = AVAudioSession.sharedInstance()
-        do {
-            // .playAndRecord + .defaultToSpeaker：录完能立刻外放，
-            // 不用切来切去（只录不放的话，放音会走听筒，声音小得听不见）
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-            try session.setActive(true)
-        } catch {
-            AppLog.error(.network, "录音会话起不来：\(error.localizedDescription)")
-            stopQuietly()
-            return false
+        // 会话已经热着就直接跳过 —— 这是"按下即录"的关键。
+        // 没热（比如用户从别处直接进来）才现场开，慢一点但能work。
+        if !isWarm {
+            do {
+                // .playAndRecord + .defaultToSpeaker：录完能立刻外放，
+                // 不用切来切去（只录不放的话，放音会走听筒，声音小得听不见）
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+                try session.setActive(true)
+                isWarm = true
+            } catch {
+                AppLog.error(.network, "录音会话起不来：\(error.localizedDescription)")
+                stopQuietly()
+                return false
+            }
         }
 
         let url = FileManager.default.temporaryDirectory
@@ -174,6 +226,10 @@ final class VoiceRecorder {
         fileURL = nil
         isRecording = false
         seconds = 0
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        // ⚠️ 这里**不**关会话。
+        //
+        // 关掉的话，用户松开手指、再按下一次，又得重新等那一两百毫秒 ——
+        // 连续发几条语音的时候每一条都卡。会话由 coolDown() 负责关，
+        // 那个只在**离开语音模式**时调。
     }
 }
