@@ -228,10 +228,15 @@ struct ChatInputBar: View {
             // 长按手势只能告诉你按够了没有，拿不到手指位置。
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    if !recorder.isRecording {
+                    // ⚠️ begin() 是**同步**的，会当场把"已经在录了"置上。
+                    //    如果这里写成 `if !recorder.isRecording { Task { await start() } }`，
+                    //    从建 Task 到 start 真正跑起来之间的那几次 onChanged
+                    //    会各自再启动一次录音，几次会话激活互相排队 ——
+                    //    实测就是一两秒的延迟。
+                    if recorder.begin() {
                         AppLog.info(.data, "语音：手指按下")
                         Task {
-                            if await recorder.start() == false {
+                            if await recorder.startCaptureAndReport() == false {
                                 onVoiceProblem("没有麦克风权限。去「设置 → 隐私与安全性 → 麦克风」里打开。")
                             }
                         }

@@ -41,6 +41,13 @@ final class VoiceRecorder {
     /// 最长时长。够说一件事了，也挡住"录着忘了"把存储撑爆。
     static let maximumSeconds: Double = 60
 
+    /// 手指按下的时刻。纯粹为了量延迟 —— 这一块来回改了四次，
+    /// 全都是靠猜。日志打出来，一次就能知道慢在哪一段。
+    private var pressedAt: Date?
+
+    /// "已经有人开始准备了" —— **同步**置位，用来挡住并发的重复启动。
+    private var isPreparing = false
+
     /// 音频会话是不是已经热着了。
     private var isWarm = false
 
@@ -62,6 +69,7 @@ final class VoiceRecorder {
         if isWarm { return true }
 
         let allowed = await AVAudioApplication.requestRecordPermission()
+        AppLog.info(.data, "语音耗时：权限 \(elapsed())")
         guard allowed else {
             AppLog.error(.network, "麦克风权限没拿到")
             return false
@@ -102,15 +110,59 @@ final class VoiceRecorder {
     /// 代价是"正在录"可能短暂地是个乐观状态 —— 但人耳听到的是
     /// 按键的即时反馈，而几十毫秒的空档没人听得出来。
     func start() async -> Bool {
-        guard !isRecording else { return true }
+        guard begin() else { return true }
+        return await beginCapture()
+    }
 
-        // ① 同步点亮界面 —— 一个 await 都不要有
+    /// **同步**的那一半：占位 + 点亮界面。返回 false 表示"已经在录了，别再来一次"。
+    ///
+    /// 【为什么必须拆出来 —— 1-2 秒延迟的真正原因】
+    ///
+    /// 原来调用方是这么写的：
+    ///
+    ///     if !recorder.isRecording {
+    ///         Task { await recorder.start() }      // start 是 async
+    ///     }
+    ///
+    /// 而 isRecording 是在 **start() 内部**才置上的。
+    /// 从 Task 创建到 start() 真正跑起来之间有**一次调度跳转**，
+    /// 这期间手指的 onChanged 会连续触发好几次 ——
+    /// **好几个 start() 同时进去，每个都去激活一次音频会话**，
+    /// 它们互相排队，实测下来就是一两秒（用户报的"按下 1-2s 才开始录"）。
+    ///
+    /// 拆开之后，"已经在录了"这个判断是**同步**做的，
+    /// 第二次 onChanged 根本进不来。异步的部分只做一次。
+    func begin() -> Bool {
+        guard !isRecording, !isPreparing else { return false }
+
+        isPreparing = true
         isRecording = true
+        pressedAt = Date()
         seconds = 0
         Haptics.tap()
         startTimer()
+        return true
+    }
 
-        // ② 再去准备真正的录音
+    /// 从"手指按下"到现在过了多久。日志用。
+    ///
+    /// ⚠️ 写成**类的方法**而不是某个函数里的局部函数 ——
+    /// 我第一次写成了局部函数，结果被插进了 warmUp 的作用域，
+    /// 在 beginCapture 里就"找不到 elapsed"，编译不过。
+    private func elapsed() -> String {
+        guard let pressedAt else { return "?" }
+        return String(format: "%.0fms", Date().timeIntervalSince(pressedAt) * 1000)
+    }
+
+    /// 给界面用的入口：从"已经 begin 过"的状态继续把录音准备起来。
+    func startCaptureAndReport() async -> Bool {
+        await beginCapture()
+    }
+
+    /// **异步**的那一半：权限 + 会话 + 录音器。
+    private func beginCapture() async -> Bool {
+        defer { isPreparing = false }
+
         let allowed = await AVAudioApplication.requestRecordPermission()
         guard allowed else {
             AppLog.error(.network, "麦克风权限没拿到")
@@ -128,6 +180,7 @@ final class VoiceRecorder {
                 try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
                 try session.setActive(true)
                 isWarm = true
+                AppLog.info(.data, "语音耗时：会话 \(elapsed())")
             } catch {
                 AppLog.error(.network, "录音会话起不来：\(error.localizedDescription)")
                 stopQuietly()
@@ -150,6 +203,7 @@ final class VoiceRecorder {
             let recorder = try AVAudioRecorder(url: url, settings: settings)
             recorder.record()
             self.recorder = recorder
+            AppLog.info(.data, "语音耗时：**真正开始录 \(elapsed())**")
         } catch {
             AppLog.error(.network, "录音起不来：\(error.localizedDescription)")
             stopQuietly()
@@ -225,6 +279,8 @@ final class VoiceRecorder {
         recorder = nil
         fileURL = nil
         isRecording = false
+        // 注意：**不复位 isPreparing** —— 它是 beginCapture 用 defer 管的，
+        // 在这里复位会把"还在准备中"这个信息抹掉，并发就又漏进来了。
         seconds = 0
         // ⚠️ 这里**不**关会话。
         //
