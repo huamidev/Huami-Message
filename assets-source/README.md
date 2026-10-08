@@ -21,7 +21,7 @@
 
 我试过两种抠图（硬阈值、柔和曲线），**都不行**。
 
-### 正确做法：正片叠底
+### 关于换底色（现已被弃用，见下）
 
 ```
 结果 = 底色 × 原图 ÷ 255
@@ -57,15 +57,6 @@ cp ./.tmp/appicon.png "Huami Message/Assets.xcassets/AppIcon.appiconset/AppIcon-
 
 > 这里的 `FFFFFF` 和 `100` 其实都不起作用 —— 原图本身是不透明的白底方图，
 > 铺满整个画布之后底色被完全盖住。写出来只是为了让命令完整。
-
-### 想换回蓝色底（线条完好，用正片叠底）
-
-```bash
-./.tmp/imgtool trim assets-source/icon-original.webp ./.tmp/trim.png 24
-./.tmp/imgtool icon ./.tmp/trim.png ./.tmp/appicon.png 1024 12B7F5 82 multiply
-```
-
-`multiply` 是**唯一**能在换底色的同时保住手绘线条的办法（见上面）。
 
 ### 必须核对
 

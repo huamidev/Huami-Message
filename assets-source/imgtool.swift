@@ -101,25 +101,7 @@ case "icon":
     let side = Double(size) * pct / 100
     let inset = (Double(size) - side) / 2
 
-    // 第 8 个参数写 multiply 时，用"正片叠底"把角色画上去。
-    //
-    // 【为什么这是个好办法】
-    //
-    // 原图是"白底 + 手绘线条"。想去掉白底有两条路：
-    //   · 抠图（把白色变透明）→ 线条的笔触纹理会被破坏成斑点（试过，不行）
-    //   · 正片叠底 → 白色和底色相乘还是底色，黑色和底色相乘还是黑，
-    //     相当于**让白色"变成"了底色**，而线条一个像素都没动
-    //
-    // 数学上：结果 = 底色 × 原图 / 255
-    //   白(255) × 蓝 = 蓝      ← 背景自然消失
-    //   黑(0)   × 蓝 = 黑      ← 线条完整保留，抗锯齿也在
-    //
-    // 代价：线条之外的颜色会被"染"上底色（那根绿草会偏青）。
-    if a.count >= 8, a[7] == "multiply" {
-        ctx.setBlendMode(.multiply)
-    }
     ctx.draw(img, in: CGRect(x: inset, y: inset, width: side, height: side))
-    ctx.setBlendMode(.normal)
     write(ctx.makeImage()!, a[3])
     print("icon -> \(size)x\(size) 底色 #\(a[5]) 角色占比 \(pct)%")
 
