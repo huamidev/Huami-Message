@@ -47,6 +47,13 @@ struct MessageBubble: View {
                         .padding(3)
                         .background { bubble }
                         .opacity(message.status == .sending ? 0.72 : 1)
+                } else if let audioURL = message.audioURL {
+                    // 语音消息：一个播放键 + 时长。
+                    VoiceBubble(url: audioURL,
+                                seconds: message.audioSeconds ?? 0,
+                                isMine: isMine)
+                        .background { bubble }
+                        .opacity(message.status == .sending ? 0.72 : 1)
                 } else {
                     Text(message.text)
                         .font(.system(size: 16))

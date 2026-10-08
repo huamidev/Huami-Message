@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!--
+	  录音权限说明。
+	  ⚠️ 这一条**必须写**，而且必须是给用户看的人话 ——
+	  不写的话，一按录音按钮 App 会**直接崩掉**（不是弹窗，是崩）。
+	  App Store 审核也会检查这句话说没说清楚拿去干什么。
+	-->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>发语音消息时需要录音。只在你按住录音键的时候录，松开就停。</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

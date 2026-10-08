@@ -35,10 +35,17 @@ struct ChatInputBar: View {
     var toolsOpen: Bool
     var onToggleTools: () -> Void
     var onPolish: () -> Void
-    var onVoice: () -> Void
+    /// 录完一段语音（数据 + 时长）
+    var onSendVoice: (Data, Double) -> Void
+    /// 录音失败时要说的话（没给权限之类）
+    var onVoiceProblem: (String) -> Void
     var onSend: () -> Void
 
     @FocusState private var isFocused: Bool
+
+    @State private var recorder = VoiceRecorder()
+    /// 手指是不是已经上滑到"取消"区域了
+    @State private var cancelling = false
 
     private var canSend: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -62,9 +69,41 @@ struct ChatInputBar: View {
                                  action: onSend)
                         .transition(.scale.combined(with: .opacity))
                 } else {
-                    circleButton(icon: "mic.fill",
-                                 label: "语音",
-                                 action: onVoice)
+                    // ⚠️ 麦克风**不是普通按钮** —— 它要"按住"。
+                    //
+                    // 用 DragGesture(minimumDistance: 0) 而不是长按手势：
+                    // 它一次性给了按下、拖动、松手三件事，
+                    // 而"上滑取消"正好需要一个拖动量。
+                    // 长按手势只能告诉你按够了没有，拿不到手指位置。
+                    circleButton(icon: recorder.isRecording ? "waveform" : "mic.fill",
+                                 label: "按住说话",
+                                 active: recorder.isRecording,
+                                 action: {})
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if !recorder.isRecording {
+                                        Task {
+                                            if await recorder.start() == false {
+                                                onVoiceProblem("没有麦克风权限。去「设置 → 隐私与安全性 → 麦克风」里打开。")
+                                            }
+                                        }
+                                    }
+                                    cancelling = value.translation.height < -60
+                                }
+                                .onEnded { _ in
+                                    guard recorder.isRecording else { return }
+                                    if cancelling {
+                                        recorder.cancel()
+                                    } else if let result = recorder.finish() {
+                                        onSendVoice(result.data, result.seconds)
+                                    } else {
+                                        // 太短：多半是误触。不报错，只是不发。
+                                        Haptics.warning()
+                                    }
+                                    cancelling = false
+                                }
+                        )
                         .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -119,6 +158,7 @@ struct ChatInputBar: View {
     private func circleButton(icon: String,
                               label: String,
                               filled: Bool = false,
+                              active: Bool = false,
                               rotated: Bool = false,
                               action: @escaping () -> Void) -> some View {
         Button {
@@ -127,7 +167,7 @@ struct ChatInputBar: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(filled ? .white : Theme.textSecondary)
+                .foregroundStyle(filled ? .white : (active ? Theme.accent : Theme.textSecondary))
                 .frame(width: 34, height: 34)
                 .background {
                     if filled {

@@ -212,10 +212,17 @@ struct ChatView: View {
                             onPolish: {
                                 polishRequest = PolishRequest(original: draft)
                             },
-                            onVoice: {
-                                // 语音消息还没做（下一步）。点了要**有反应**，
-                                // 不能默默什么都不发生 —— 那看起来就是坏了。
-                                voiceNotice = "语音消息还在做，下一步就轮到它。"
+                            onSendVoice: { data, seconds in
+                                Task {
+                                    await store.sendVoice(data,
+                                                          seconds: seconds,
+                                                          to: conversation.friend.id)
+                                }
+                            },
+                            onVoiceProblem: { message in
+                                // 录音失败（多半是没给权限）必须说出来。
+                                // 不说的话用户只会觉得"按了没反应"。
+                                voiceNotice = message
                             },
                             onSend: send
                         )
