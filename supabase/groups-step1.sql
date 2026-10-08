@@ -58,20 +58,42 @@ alter table public.conversation_members enable row level security;
 -- ── 权限规则 ──────────────────────────────────────────────────────
 --
 -- 核心是一句话：**你只能看见你参与的对话**。
--- 下面两条规则里的"我参与的"都是现算的（子查询），
--- 而不是把成员列表冗余到 conversations 上 —— 冗余会带来"改了忘了同步"的 bug，
--- 而 RLS 出 bug 的后果是**别人能读你的聊天记录**，代价太大。
+--
+-- ⚠️ 这里踩过一个坑，写下来：我一开始在两条策略里**直接写子查询**
+-- （`exists (select 1 from conversation_members ...)`），想的是
+-- "现算最不容易出错，不冗余就不会有同步问题"。
+--
+-- 结果整个功能一读就 500：
+--
+--     infinite recursion detected in policy for relation "conversation_members"
+--
+-- 因为那条策略保护的**就是** conversation_members，
+-- 而策略表达式又要去查 conversation_members —— 自己套自己，无限递归。
+--
+-- 正确做法是把这个判断包进一个 **security definer** 函数：
+-- 函数以属主身份执行，内部**绕过 RLS**，递归就断了。
+-- 这也是 Supabase 官方推荐的写法（他们的文档里管这叫
+-- "avoiding infinite recursion in RLS policies"）。
+--
+-- 注意 search_path 必须显式写死。security definer + 不设 search_path
+-- 是一个已知的提权风险（别人可以建同名函数把你顶掉）。
+create or replace function public.is_conversation_member(conv uuid)
+returns boolean
+language sql
+security definer set search_path = public
+stable
+as $$
+    select exists (
+        select 1 from public.conversation_members
+        where conversation_id = conv
+          and user_id = auth.uid()
+    );
+$$;
 
 drop policy if exists "conversations visible to members" on public.conversations;
 create policy "conversations visible to members"
     on public.conversations for select to authenticated
-    using (
-        exists (
-            select 1 from public.conversation_members m
-            where m.conversation_id = conversations.id
-              and m.user_id = auth.uid()
-        )
-    );
+    using (public.is_conversation_member(id));
 
 drop policy if exists "anyone signed in can create a conversation" on public.conversations;
 create policy "anyone signed in can create a conversation"
@@ -81,13 +103,7 @@ create policy "anyone signed in can create a conversation"
 drop policy if exists "members visible to members" on public.conversation_members;
 create policy "members visible to members"
     on public.conversation_members for select to authenticated
-    using (
-        exists (
-            select 1 from public.conversation_members me
-            where me.conversation_id = conversation_members.conversation_id
-              and me.user_id = auth.uid()
-        )
-    );
+    using (public.is_conversation_member(conversation_id));
 
 -- ⚠️ 成员表**故意不给直接 insert / delete 的规则**。
 --
