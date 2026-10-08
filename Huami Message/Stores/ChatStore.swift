@@ -269,6 +269,47 @@ final class ChatStore {
         refreshFromLocal()
     }
 
+    /// 本地搜索：在**好友名字**和**消息内容**里找。
+    ///
+    /// 全程在内存里做，不碰网络 —— 所以是"边打字边出结果"。
+    /// 代价是数据量大到几万条时会慢，那时候要改成数据库查询
+    ///（`LocalStore` 里加一个带 `#Predicate` 的 search）。
+    /// 现在的量级（几百条）完全够用。
+    func search(_ keyword: String) -> [SearchHit] {
+        let needle = keyword.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard needle.count >= 1 else { return [] }
+
+        var hits: [SearchHit] = []
+
+        for conversation in conversations {
+            let friend = conversation.friend
+
+            if friend.name.lowercased().contains(needle) {
+                hits.append(SearchHit(id: "f-\(friend.id)", kind: .friend,
+                                      friend: friend, text: friend.name, date: nil))
+            }
+
+            for message in messagesByFriend[friend.id] ?? []
+            where message.text.lowercased().contains(needle) {
+                hits.append(SearchHit(id: "m-\(message.id)", kind: .message,
+                                      friend: friend, text: message.text,
+                                      date: message.sentAt))
+            }
+        }
+
+        // 好友命中排前面（找人通常比找一句话更常见），
+        // 同一类里按时间从新到旧
+        return hits.sorted { a, b in
+            if a.kind != b.kind { return a.kind == .friend }
+            return a.sortKey > b.sortKey
+        }
+    }
+
+    /// 找某个好友对应的会话（从搜索结果跳进聊天页要用）
+    func conversation(for friendID: Friend.ID) -> Conversation? {
+        conversations.first { $0.friend.id == friendID }
+    }
+
     /// 注销账号 / 清空全部数据。
     ///
     /// 现在只清本地（因为我们还没接服务器）。

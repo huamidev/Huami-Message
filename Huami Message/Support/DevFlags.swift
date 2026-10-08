@@ -104,6 +104,11 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "focusEmail")
     }
 
+    /// 启动时把搜索框填上这个词 —— 用来截图验证搜索结果
+    static var searchFor: String {
+        UserDefaults.standard.string(forKey: "searchFor") ?? ""
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

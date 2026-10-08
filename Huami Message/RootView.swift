@@ -26,7 +26,18 @@ struct RootView: View {
     /// 让每个页面自己造数据库，迟早会出现"两个页面看的数据不一样"的怪问题。
     let store: ChatStore
 
-    enum Tab { case messages, profile }
+    /// 四个页签。
+    ///
+    /// 【为什么把"搜索"单独拎出来】
+    ///
+    /// 放在消息页顶上时，搜索框会**一直占着一条**，而它大部分时候是空着的。
+    /// 独立成一页之后，进来就是全屏的结果列表，不用在列表和结果之间来回切。
+    ///
+    /// 【为什么有"联系人"而不是把加好友留在消息页】
+    ///
+    /// 加好友是"维护关系"的动作，不是"看消息"的动作。
+    /// 消息页应该只有"最近聊过的人"。
+    enum Tab { case messages, search, contacts, profile }
 
     @State private var selection: Tab = RootView.initialTab
 
@@ -43,8 +54,10 @@ struct RootView: View {
     /// 平时正常启动就是「消息」页，不受影响。
     static var initialTab: Tab {
         switch DevFlags.startTab {
-        case "profile": .profile
-        default:        .messages
+        case "profile":  .profile
+        case "search":   .search
+        case "contacts": .contacts
+        default:         .messages
         }
     }
 
@@ -70,6 +83,18 @@ struct RootView: View {
                     Label("消息", systemImage: "bubble.left.and.bubble.right.fill")
                 }
                 .tag(Tab.messages)
+
+            SearchView()
+                .tabItem {
+                    Label("搜索", systemImage: "magnifyingglass")
+                }
+                .tag(Tab.search)
+
+            ContactsView()
+                .tabItem {
+                    Label("联系人", systemImage: "person.2.fill")
+                }
+                .tag(Tab.contacts)
 
             ProfileView()
                 .tabItem {
