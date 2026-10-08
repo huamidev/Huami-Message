@@ -128,6 +128,15 @@ final class MockAuthService: AuthService {
 
     // MARK: - 退出
 
+    /// 示例模式没有真会话，交不出来。
+
+    /// 返回 nil 是诚实的做法 —— 编一个假 token，
+
+    /// 账号列表上就会多一个切不过去的条目。
+
+    func currentSessionTokens() -> (access: String, refresh: String?)? { nil }
+
+
     func signOut() async {
         store.removeObject(forKey: sessionKey)
     }

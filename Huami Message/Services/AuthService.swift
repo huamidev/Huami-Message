@@ -110,6 +110,13 @@ protocol AuthService {
     /// 遇到那种情况，App 照样能用，只是**每次打开都要重新登录**。
     /// 与其让用户莫名其妙，不如把这件事说出来。
     var isSessionPersisted: Bool { get }
+
+    /// 把当前会话的 token 交出来 —— 账号列表要拿它存进"这台手机登录过的账号"。
+    ///
+    /// 为什么让实现方主动交，而不是让 AccountVault 自己去读钥匙串：
+    /// 钥匙串的 key 是 AuthService 自己的内部细节，
+    /// 外面知道得越少，以后换存储方式就越不容易漏改。
+    func currentSessionTokens() -> (access: String, refresh: String?)?
 }
 
 extension AuthService {

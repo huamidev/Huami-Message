@@ -21,6 +21,11 @@ struct AuthGateView: View {
 
     @Environment(AuthStore.self) private var auth
 
+    /// 这台手机登录过的账号。
+    /// AccountVault 是 @Observable，所以这里直接用 @State 持有同一个实例，
+    /// 仓库一变这个页面就跟着刷新。
+    @State private var vault = AccountVault.shared
+
     @State private var mode: Mode = .signIn
     @State private var email = ""
     @State private var password = ""
@@ -47,6 +52,7 @@ struct AuthGateView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     header
+                    if !vault.accounts.isEmpty { savedAccountsCard }
                     if !serverIssues.isEmpty { setupCard }
                     modePicker
                     fields
@@ -80,6 +86,86 @@ struct AuthGateView: View {
     }
 
     // MARK: - 顶部
+
+    /// 登录过的账号：点一下就切回去，**不用重打密码**。
+    ///
+    /// 为什么值得做：手机上打邮箱 + 密码很烦，而常见的使用场景就是
+    /// 工作号 / 私人号来回切。会话存在钥匙串里，切回来是一瞬间的事。
+    ///
+    /// 为什么放在表单**上面**：绝大多数时候用户就是来切号的，
+    /// 登录框应该退到第二位。没有存过账号时这块整个不出现。
+    private var savedAccountsCard: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("这台手机上的账号")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textTertiary)
+                Spacer(minLength: 0)
+                Text("长按可以移除")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary.opacity(0.8))
+            }
+            .padding(.horizontal, 4)
+            .padding(.bottom, 8)
+
+            VStack(spacing: 0) {
+                ForEach(Array(vault.accounts.enumerated()), id: \.element.id) { index, saved in
+                    if index > 0 {
+                        Divider().overlay(Theme.separator)
+                            .padding(.leading, 64)
+                    }
+                    accountRow(saved)
+                }
+            }
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private func accountRow(_ saved: SavedAccount) -> some View {
+        Button {
+            Haptics.tap()
+            Task { await auth.switchTo(saved) }
+        } label: {
+            HStack(spacing: 12) {
+                Avatar(initial: saved.initial, seed: saved.avatarSeed, size: 42)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(saved.displayName)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    Text(saved.subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                // 正在切的时候转个圈 —— 否则点完到界面变化之间有一段空白，
+                // 用户会以为没点上，然后再点一次
+                if auth.isWorking {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textTertiary.opacity(0.6))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                Haptics.warning()
+                AccountVault.shared.forget(saved.id)
+            } label: {
+                Label("别记住这个账号了", systemImage: "trash")
+            }
+        }
+    }
 
     private var header: some View {
         VStack(spacing: 12) {

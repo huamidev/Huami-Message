@@ -150,6 +150,11 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "testAvatar")
     }
 
+    /// 往账号列表里塞两个假账号（模拟器钥匙串写不进去，否则看不到这一屏）
+    static var seedAccounts: Bool {
+        UserDefaults.standard.bool(forKey: "seedAccounts")
+    }
+
     /// 假装正在录音（截图没法按住按钮，得把这一屏调出来看位置）
     static var fakeRecording: Bool {
         UserDefaults.standard.bool(forKey: "fakeRecording")

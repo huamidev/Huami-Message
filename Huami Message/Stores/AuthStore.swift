@@ -45,6 +45,7 @@ final class AuthStore {
 
         do {
             account = try await service.updateAvatar(url)
+            syncVault()
             Haptics.success()
             return true
         } catch {
@@ -65,6 +66,7 @@ final class AuthStore {
 
         do {
             account = try await service.updateUsername(username)
+            syncVault()
             Haptics.success()
             return true
         } catch {
@@ -84,6 +86,7 @@ final class AuthStore {
             account = try await service.updateProfile(displayName: displayName,
                                                       bio: bio,
                                                       avatarSeed: avatarSeed)
+            syncVault()
             // 开发排查：保存资料之后头像还在不在。
             // 这里踩过一个坑：updateProfile 重建 Account 时漏了 avatarURL，
             // 于是「换了头像，一保存就没了」。
@@ -145,6 +148,39 @@ final class AuthStore {
         await run { try await self.service.signUp(email: email, password: password) }
     }
 
+    /// 切到"这台手机登录过"的某个账号。
+    ///
+    /// **不需要重新输密码** —— 会话还在钥匙串里。
+    /// 这也是账号列表存在的全部意义：工作号 / 私人号来回切不用重打密码。
+    func switchTo(_ saved: SavedAccount) async {
+        isWorking = true
+        errorMessage = nil
+        defer { isWorking = false }
+
+        guard let restored = await service.adoptSession(accessToken: saved.accessToken,
+                                                        refreshToken: saved.refreshToken) else {
+            // token 过期了（或者被服务器吊销了）。
+            //
+            // 这时要**把这条记录删掉** —— 留着的话，用户会看到一个
+            // 点了没反应的条目，比没有它更让人困惑。
+            AccountVault.shared.forget(saved.id)
+            errorMessage = "这个账号的登录状态过期了，重新输一次密码吧。"
+            Haptics.warning()
+            return
+        }
+
+        account = restored
+        AccountVault.shared.refreshTokens(for: saved.id,
+                                          accessToken: saved.accessToken,
+                                          refreshToken: saved.refreshToken)
+        Haptics.success()
+    }
+
+    /// 资料改动之后同步账号列表上的显示（昵称、头像、用户名）
+    private func syncVault() {
+        if let account { AccountVault.shared.update(account) }
+    }
+
     func signOut() async {
         await service.signOut()
         account = nil
@@ -173,7 +209,19 @@ final class AuthStore {
         defer { isWorking = false }
 
         do {
-            account = try await work()
+            let fresh = try await work()
+            account = fresh
+
+            // 登录/注册成功 → 记进"这台手机登录过的账号"。
+            //
+            // 放在这个统一出口，而不是 signIn / signUp 各写一遍：
+            // 以后再加登录方式（验证码、第三方）不会漏。
+            // 记的是 refresh token，所以退出登录之后还能一键切回来。
+            if let tokens = service.currentSessionTokens() {
+                AccountVault.shared.remember(fresh,
+                                             accessToken: tokens.access,
+                                             refreshToken: tokens.refresh)
+            }
             Haptics.success()
         } catch {
             errorMessage = describe(error)

@@ -458,6 +458,11 @@ final class SupabaseAuthService: AuthService {
         var account: Account
     }
 
+    func currentSessionTokens() -> (access: String, refresh: String?)? {
+        guard let session = Self.loadSession() else { return nil }
+        return (session.accessToken, session.refreshToken)
+    }
+
     private static func loadSession() -> StoredSession? {
         guard let data = Keychain.load(sessionKey) else { return nil }
         return try? JSONDecoder().decode(StoredSession.self, from: data)
