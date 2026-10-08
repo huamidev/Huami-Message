@@ -88,6 +88,11 @@ struct RootView: View {
             if DevFlags.resetTerms { hasAcceptedTerms = false }
             if DevFlags.acceptTerms { hasAcceptedTerms = true }
             await store.start()
+            // 开发自检：启动并加载完之后，执行一次"删除账号"，验证真的清干净
+            if DevFlags.devWipe {
+                try? await Task.sleep(for: .milliseconds(500))
+                store.deleteEverything()
+            }
         }
     }
 }

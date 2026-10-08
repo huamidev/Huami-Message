@@ -72,6 +72,11 @@ enum DevFlags {
         UserDefaults.standard.string(forKey: "legalDoc") ?? ""
     }
 
+    /// 启动后立刻执行"删除账号"（用来验证真的删干净了，不用手点确认框）
+    static var devWipe: Bool {
+        UserDefaults.standard.bool(forKey: "devWipe")
+    }
+
     /// **完全离线**：跳过一切网络请求，只用本地数据库。
     ///
     /// 这个开关不是玩具，它是用来**证明**「打开 App 瞬间就能操作」的：

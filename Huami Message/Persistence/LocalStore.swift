@@ -68,6 +68,12 @@ protocol LocalStore {
 
     /// 读出某个好友的举报记录（用来告诉用户"你已经举报过了"）
     func reports(for friendID: Friend.ID) -> [Report]
+
+    /// 删掉**全部**本地数据：好友、消息、举报记录、删除墓碑。
+    ///
+    /// 这是"注销账号"在本地那一半。接上服务器之后，
+    /// ChatStore 会在这个之后再调一次服务器删除 —— 但界面只认这一个方法名。
+    func deleteEverything()
 }
 
 // MARK: - SwiftData 版实现
@@ -229,6 +235,17 @@ final class SwiftDataLocalStore: LocalStore {
             .filter { $0.friendID == friendID }
             .sorted { $0.createdAt > $1.createdAt }
             .map(\.asReport)
+    }
+
+    func deleteEverything() {
+        // 四张表一张都不留。
+        // 注意**墓碑也要删** —— 如果留着墓碑，用户之后重新加同一个好友时，
+        // 那些"这个 id 被删过"的记录会把新数据挡在门外，变成一桩查不出来的怪事。
+        for item in fetchAll(StoredMessage.self)   { context.delete(item) }
+        for item in fetchAll(StoredFriend.self)    { context.delete(item) }
+        for item in fetchAll(StoredReport.self)    { context.delete(item) }
+        for item in fetchAll(StoredTombstone.self) { context.delete(item) }
+        commit()
     }
 
     // MARK: 内部

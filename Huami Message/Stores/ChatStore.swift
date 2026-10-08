@@ -244,6 +244,16 @@ final class ChatStore {
         local.saveReport(Report(friendID: friendID, reason: reason, note: note))
     }
 
+    /// 注销账号 / 清空全部数据。
+    ///
+    /// 现在只清本地（因为我们还没接服务器）。
+    /// **接上 Supabase 之后，这里会多一步调服务器删除**，界面完全不用改。
+    func deleteEverything() {
+        local.deleteEverything()
+        conversations = []
+        messagesByFriend = [:]
+    }
+
     /// 这个好友被举报过几次
     func reportCount(for friendID: Friend.ID) -> Int {
         local.reports(for: friendID).count

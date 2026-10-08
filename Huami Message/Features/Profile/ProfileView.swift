@@ -14,8 +14,13 @@ import SwiftUI
 ///      第 1 步接入账号后把它接上。
 struct ProfileView: View {
 
+    @Environment(ChatStore.self) private var store
+
     /// 正在查看的法律文档（隐私政策 / 服务条款）
     @State private var showDocument: LegalDocument?
+
+    /// 是否正在确认"删除账号"
+    @State private var showDeleteAccount = false
 
     var body: some View {
         NavigationStack {
@@ -37,6 +42,18 @@ struct ProfileView: View {
         }
         .sheet(item: $showDocument) { document in
             LegalDocumentView(document: document)
+        }
+        // 删除是不可撤销的，必须再问一次 —— 而且要说清楚删掉什么、能不能恢复。
+        // 这是 App Store 审核指南 5.1.1(v) 的硬性要求：
+        // **只要 App 能注册账号，就必须能在 App 内删掉它。**
+        .confirmationDialog("删除账号和全部数据？",
+                            isPresented: $showDeleteAccount, titleVisibility: .visible) {
+            Button("永久删除", role: .destructive) {
+                withAnimation(.snappy) { store.deleteEverything() }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("会删掉你所有的聊天记录、好友和举报记录。删除后无法恢复。\n\n（接上服务器之后，这里还会同时删除服务器上的数据。）")
         }
         // 开发用：带 -legalDoc terms 直接打开对应文档
         .task {
@@ -103,7 +120,13 @@ struct ProfileView: View {
 
             settingRow("AI 服务商", value: "DeepSeek", enabled: false)
             divider
-            settingRow("删除账号", value: "待接入", enabled: false)
+            Button {
+                Haptics.warning()
+                showDeleteAccount = true
+            } label: {
+                settingRow("删除账号", value: "", enabled: false, showsChevron: true)
+            }
+            .buttonStyle(.plain)
             divider
             settingRow("举报与屏蔽", value: "待接入", enabled: false)
         }
@@ -202,7 +225,8 @@ struct ProfileView: View {
 
     /// 设置项。enabled = false 表示还没接入，显示成灰的，
     /// 免得你或测试的朋友点了没反应，以为是 bug。
-    private func settingRow(_ title: String, value: String, enabled: Bool) -> some View {
+    private func settingRow(_ title: String, value: String, enabled: Bool,
+                            showsChevron: Bool = false) -> some View {
         HStack {
             Text(title)
                 .font(.system(size: 14))
@@ -211,8 +235,14 @@ struct ProfileView: View {
             Text(value)
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textTertiary)
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
         }
         .padding(.vertical, 11)
+        .contentShape(Rectangle())   // 让整行都能点，而不是只有字能点
     }
 
     private var divider: some View {
