@@ -78,7 +78,7 @@ final class VoiceRecorder {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-            try session.setActive(true)
+            try await Self.activateOffMainThread(session)
             isWarm = true
             return true
         } catch {
@@ -92,8 +92,12 @@ final class VoiceRecorder {
         guard !isRecording else { return }   // 正在录就别动
         guard isWarm else { return }
         isWarm = false
-        try? AVAudioSession.sharedInstance().setActive(false,
-                                                       options: .notifyOthersOnDeactivation)
+        let session = AVAudioSession.sharedInstance()
+        // coolDown 是同步函数（界面切模式时直接调），所以这里起个 Task 就返回。
+        // 关会话慢一点没关系 —— 没有任何人等在它后面。
+        Task.detached(priority: .utility) {
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     /// 开始录。返回 false 表示没拿到权限。
@@ -166,6 +170,39 @@ final class VoiceRecorder {
         startTimer()
     }
 
+    /// 在**主线程之外**激活音频会话。
+    ///
+    /// 【为什么必须这样 —— 系统自己说出来的】
+    ///
+    /// 在手机上实测时，控制台里出现了这句：
+    ///
+    ///     AVAudioSession_iOS.mm:978  This method can lead to UI
+    ///     unresponsiveness if called on the main thread. Consider using
+    ///     the asynchronous activate/deactivate API instead...
+    ///
+    /// 也就是说：**setActive 在主线程上调用会把 UI 卡住**。
+    /// 这正是"按住不动很慢、滑动才唤出提示"的真正原因 ——
+    /// 主线程被阻塞，提示条根本画不出来（滑动时事件密集，
+    /// 阻塞结束后总有一次重绘机会，所以看起来是"秒开"）。
+    ///
+    /// 而同一份日志里，**录音本身只用 64ms 就开始了** ——
+    /// 慢的从来不是录音，是界面。
+    ///
+    /// 这个 SDK 版本里没找到 async 版的 activate（它是 Objective-C API，
+    /// 异步版在生成的 overlay 里，这里是纯 Swift 环境），
+    /// 所以用 detached task 把它挪出主线程 —— 效果一样，而且不挑版本。
+    private static func activateOffMainThread(_ session: AVAudioSession) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try session.setActive(true)
+        }.value
+    }
+
+    private static func deactivateOffMainThread(_ session: AVAudioSession) async {
+        await Task.detached(priority: .utility) {
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        }.value
+    }
+
     /// 从"手指按下"到现在过了多久。日志用。
     ///
     /// ⚠️ 写成**类的方法**而不是某个函数里的局部函数 ——
@@ -200,7 +237,7 @@ final class VoiceRecorder {
                 // 不用切来切去（只录不放的话，放音会走听筒，声音小得听不见）
                 let session = AVAudioSession.sharedInstance()
                 try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-                try session.setActive(true)
+                try await Self.activateOffMainThread(session)
                 isWarm = true
                 AppLog.info(.data, "语音耗时：会话 \(elapsed())")
             } catch {
@@ -222,9 +259,14 @@ final class VoiceRecorder {
         ]
 
         do {
-            let recorder = try AVAudioRecorder(url: url, settings: settings)
-            recorder.record()
-            self.recorder = recorder
+            // 录音器的创建和启动也放到主线程之外 —— 它同样要碰音频硬件。
+            // 会话已经热着的情况下，这里就是最后一段可能卡主线程的代码。
+            let built = try await Task.detached(priority: .userInitiated) {
+                let recorder = try AVAudioRecorder(url: url, settings: settings)
+                recorder.record()
+                return recorder
+            }.value
+            self.recorder = built
             AppLog.info(.data, "语音耗时：**真正开始录 \(elapsed())**")
         } catch {
             AppLog.error(.network, "录音起不来：\(error.localizedDescription)")

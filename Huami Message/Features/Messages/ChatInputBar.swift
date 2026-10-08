@@ -162,6 +162,11 @@ struct ChatInputBar: View {
         //
         // overlay 不参与父视图的尺寸计算，所以它出现/消失都**不会触发布局变化**，
         // 也就不会逼玻璃重绘。
+        // 如果一进来就已经是语音模式（开发自检用的 -voiceMode，或者用户
+        // 关掉 App 前停在语音模式），也要预热 —— 否则第一次按下会现场激活会话。
+        .task {
+            if voiceMode { _ = await recorder.warmUp() }
+        }
         .overlay(alignment: .top) {
             if recorder.showsRecordingUI {
                 recordingHint
