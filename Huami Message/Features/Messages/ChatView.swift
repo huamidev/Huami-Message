@@ -724,6 +724,19 @@ struct ChatView: View {
         // 前两次改的（toolbarBackground / 标题胶囊）都不是它。
         // API 名是从 SDK 里搜出来的，不是猜的。
         .scrollEdgeEffectHidden(true, for: .all)
+        // ── 滚到底时给输入栏留出位置 ──
+        //
+        // 消息是**浮在输入栏下面**滚过去的（这是之前特意做的效果），
+        // 所以"滚到底"= 最后一条会被输入栏压住一半。
+        // 用户要的是「比输入框稍微高一点」。
+        //
+        // contentMargins 给**滚动内容**加下边距：滚到底时最后一条
+        // 停在离底 80 磅的地方，正好在输入栏（约 62 磅高）上方留一点空隙。
+        // 手动往上翻的时候，消息照样能从输入栏下面经过 —— 这个效果没丢。
+        //
+        // 80 是"输入栏高度 + 一点空隙"估的。输入栏高度写死在
+        // ChatInputBar.controlHeight(=40)，加上它自己的内边距大约 62。
+        .contentMargins(.bottom, 80, for: .scrollContent)
         .scrollDismissesKeyboard(.immediately)
         // ── 点聊天区收起键盘 ──
         //
