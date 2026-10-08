@@ -257,62 +257,73 @@ struct ChatInputBar: View {
         .frame(height: Self.controlHeight)
         .pillGlass()
         .contentShape(Capsule())
-        // ⚠️ **highPriorityGesture，不是 gesture。**
+        // ── 按住说话 ──
         //
-        // 用户的实测把原因指得很清楚：
-        //   「从按钮上滑或任何方向滑 → 秒开；单独按住不动 → 很慢」
+        // 【为什么不用 DragGesture —— 这是"按住不动很慢"的根因】
         //
-        // 滑动秒开、静止就慢，说明**有另一个手势在跟我抢**：
-        // 一动就分出胜负（对方因为移动而失败，我立刻拿到），
-        // 不动就得等系统判定（等到它确认这既不是点击也不是长按）。
+        // DragGesture 要**等系统判定"这是拖动"**才开始回调。
+        // 手指一移动，判定立刻成立；而**按住不动**时，判定要一直等到
+        // 系统手势闸门超时（日志里的 "Gesture: System gesture gate timed out."），
+        // 我们才收到第一个 onChanged。
         //
-        // 那个"对方"是 .glassEffect —— 液态玻璃自带了按压识别。
-        // highPriorityGesture 让我的手势优先，不再等它。
+        // 这就是用户观察到的全部现象：
+        //   滑动 → 秒开（判定立刻成立）
+        //   按住不动 → 很慢（等闸门）
         //
-        // 依然用 DragGesture(minimumDistance: 0) 而不是长按手势：
-        // 它一次性给了按下、拖动、松手三件事，上滑取消需要拖动量；
-        // 长按手势拿不到手指位置。
-        .highPriorityGesture(
+        // 微信 / Telegram 用的是 UIKit 的 touchesBegan —— **手指一碰到屏幕
+        // 就触发，根本不等识别**。SwiftUI 里的等价物是
+        // LongPressGesture(minimumDuration: 0) 的 pressing 回调：
+        // minimumDuration 为 0 时，pressing(true) 在按下瞬间就来。
+        //
+        // 上滑取消仍然需要一个拖动量，所以另挂一个 simultaneousGesture
+        // 专门读 translation —— 它只负责更新"在不在取消区"，不负责起停。
+        .onLongPressGesture(
+            minimumDuration: 0,
+            maximumDistance: .infinity,
+            pressing: { isPressing in
+                if isPressing {
+                    beginVoiceRecording()
+                } else {
+                    endVoiceRecording()
+                }
+            },
+            perform: {}
+        )
+        .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    // ⚠️ begin() 是**同步**的，会当场把"已经在录了"置上。
-                    //    如果这里写成 `if !recorder.isRecording { Task { await start() } }`，
-                    //    从建 Task 到 start 真正跑起来之间的那几次 onChanged
-                    //    会各自再启动一次录音，几次会话激活互相排队 ——
-                    //    实测就是一两秒的延迟。
-                    if recorder.claimStart() {
-                        AppLog.info(.data, "语音：手指按下  @\(VoiceRecorder.stamp())")
-                        // ⚠️ **所有界面可见的状态改动都在这个 Task 里做。**
-                        //
-                        // 直接在手势的 onChanged 里改，SwiftUI 会把手势期间的
-                        // 变化推迟到手势结束 —— 按住不动时就是"要等松手才弹提示"。
-                        // 跳一个 tick 就出了手势事务，会立刻渲染。
-                        //
-                        // 占位（claimStart）仍然是同步的，所以并发依然被挡住。
-                        Task { @MainActor in
-                            recorder.markRecordingUI()
-                            if await recorder.startCaptureAndReport() == false {
-                                onVoiceProblem("没有麦克风权限。去「设置 → 隐私与安全性 → 麦克风」里打开。")
-                            }
-                        }
-                    }
                     cancelling = value.translation.height < -60
                 }
-                .onEnded { _ in
-                    guard recorder.isRecording else { return }
-                    if cancelling {
-                        recorder.cancel()
-                    } else if let result = recorder.finish() {
-                        onSendVoice(result.data, result.seconds)
-                    } else {
-                        // 太短：多半是误触。但**不能默默什么都不做** ——
-                        // 用户分不清"误触被丢掉了"和"功能坏了"。
-                        Haptics.warning()
-                        onVoiceProblem("说话时间太短了，按住多说一会儿再松手。")
-                    }
-                    cancelling = false
-                }
         )
+    }
+
+    /// 手指按下的瞬间（由 LongPressGesture 的 pressing 回调触发，不等手势识别）
+    private func beginVoiceRecording() {
+        AppLog.info(.data, "语音：手指按下  @\(VoiceRecorder.stamp())")
+        guard recorder.claimStart() else { return }
+        Task { @MainActor in
+            recorder.markRecordingUI()
+            if await recorder.startCaptureAndReport() == false {
+                onVoiceProblem("没有麦克风权限。去「设置 → 隐私与安全性 → 麦克风」里打开。")
+            }
+        }
+    }
+
+    /// 手指抬起
+    private func endVoiceRecording() {
+        AppLog.info(.data, "语音：手指抬起  @\(VoiceRecorder.stamp())")
+        guard recorder.isRecording else { cancelling = false; return }
+        if cancelling {
+            recorder.cancel()
+        } else if let result = recorder.finish() {
+            onSendVoice(result.data, result.seconds)
+        } else {
+            // 太短：多半是误触。但**不能默默什么都不做** ——
+            // 用户分不清"误触被丢掉了"和"功能坏了"。
+            Haptics.warning()
+            onVoiceProblem("说话时间太短了，按住多说一会儿再松手。")
+        }
+        cancelling = false
     }
 
     private func switchToVoice() {
