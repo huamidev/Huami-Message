@@ -142,7 +142,14 @@ struct ChatInputBar: View {
         // 用户按住之后唯一的感受就是"点了没反应"。
         // **没有反馈的功能等于坏了的功能。**
         }
-        .animation(.snappy(duration: 0.18), value: recorder.showsRecordingUI)
+        // ⚠️ 这里**故意不加动画**。
+        //
+        // 提示条是手势驱动的：手势进行中的状态变化，SwiftUI 本来就会推迟渲染，
+        // 再叠一层 transition 动画，等于给"什么时候画出来"又加了一个条件。
+        // 按住不动时它要等，滑动时因为事件密集所以看起来是秒开 ——
+        // 和用户描述的现象完全一致。
+        //
+        // 录音提示的价值在"立刻出现"，不在好看。所以直接画，不做动画。
         .animation(.snappy(duration: 0.18), value: cancelling)
         // ── 录音提示浮在上方 ──
         //
@@ -160,7 +167,6 @@ struct ChatInputBar: View {
                 recordingHint
                     // 偏移量要大于提示条自身高度，否则会压住输入栏
                     .offset(y: -160)
-                    .transition(.opacity)
                     .allowsHitTesting(false)   // 别挡住手指
             }
         }

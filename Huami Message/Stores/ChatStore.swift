@@ -431,7 +431,6 @@ final class ChatStore {
             failed.status = .failed
             persist(failed)
             replace(message.id, in: message.friendID, with: failed)
-            print("发送失败：", error)
         }
     }
 

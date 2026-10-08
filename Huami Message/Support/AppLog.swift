@@ -44,12 +44,25 @@ enum AppLog {
     /// 正常信息（「加载了 12 个会话，耗时 8ms」这种）
     static func info(_ module: Module, _ message: String) {
         logger(module).info("\(message)")
+        // ⚠️ **必须同时 print。**
+        //
+        // Logger（os.Logger）是"正确"的做法：能按 subsystem / category 过滤，
+        // 能在 Console.app 里查历史。但它**不保证出现在 Xcode 的控制台里** ——
+        // 实测就是这样：我连着几轮加的诊断日志，用户一条都没看到，
+        // 而同一段代码里的 print 他却看得到。
+        //
+        // 结果是我们俩各说各话：我以为日志在那儿，他以为没修好。
+        // 排查信息**必须真的到达对方眼睛**，否则等于没写。
+        //
+        // 两样都留：Logger 用于正经排查，print 保证"看得见"。
+        print("[\(module.rawValue)] \(message)")
     }
 
     /// 出问题了。**只记录，不抛出去** ——
     /// 存不进数据库不该让 App 崩掉，用户还能继续用，只是这次没存下来。
     static func error(_ module: Module, _ message: String) {
         logger(module).error("\(message)")
+        print("[\(module.rawValue)] ⚠️ \(message)")
     }
 }
 
