@@ -29,6 +29,19 @@ final class SupabaseClient {
     /// 登录后拿到的凭证。nil 表示还没登录（这时用 anon key，只能访问公开的东西）。
     private(set) var accessToken: String?
 
+    /// 当前登录用户的 id。
+    ///
+    /// 【为什么放在这里，而不是让聊天服务自己去找】
+    ///
+    /// 聊天服务必须知道"我是谁" —— 比如查消息时要表达
+    /// "发给我或我发出的"。但它天生拿不到这个信息：
+    /// ChatStore 是在 App 启动时就建好的，那时候还没登录。
+    ///
+    /// 而登录和聊天**共用同一个客户端实例**（这样凭证才能自动带上），
+    /// 所以让登录服务在登录成功时顺手写在这里，聊天服务用的时候直接读 ——
+    /// 既不用改架构，也不用把用户 id 一层层传下去。
+    private(set) var currentUserID: UUID?
+
     init(config: SupabaseConfig) {
         self.config = config
 
@@ -39,8 +52,11 @@ final class SupabaseClient {
         self.session = URLSession(configuration: configuration)
     }
 
-    func setAccessToken(_ token: String?) {
-        accessToken = token
+    /// 登录成功 / 退出登录时调用。凭证和身份必须**一起**更新 ——
+    /// 只换凭证不换身份，会出现"用新账号的钥匙开旧账号的门"这种怪事。
+    func setSession(accessToken: String?, userID: UUID?) {
+        self.accessToken = accessToken
+        self.currentUserID = userID
     }
 
     // MARK: - 对外的方法
@@ -107,8 +123,18 @@ final class SupabaseClient {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            // 只记路径和方法，**不记完整 URL**（虽然 anon key 不在 URL 里，
-            // 但养成"日志里不出现凭证"的习惯没坏处）
+            // ⚠️ **取消不是网络故障，必须分开处理。**
+            //
+            // URLSession 把"任务被取消"也当成错误抛出来（URLError.cancelled）。
+            // 如果不区分，日志里会写"连不上服务器"，而其实是自己取消的 ——
+            // 这种误导性日志会让人往完全错误的方向排查。
+            // （我这次就被它骗了一下：以为是服务器的问题。）
+            if (error as? URLError)?.code == .cancelled {
+                AppLog.info(.network, "\(method.rawValue) \(path) 已取消")
+                throw SupabaseError.cancelled
+            }
+            // 只记路径和方法，**不记完整 URL**
+            //（虽然 anon key 不在 URL 里，但养成"日志里不出现凭证"的习惯没坏处）
             AppLog.error(.network, "\(method.rawValue) \(path) 网络失败：\(error.localizedDescription)")
             throw SupabaseError.network
         }
@@ -131,7 +157,7 @@ final class SupabaseClient {
 
     private static func encode<Body: Encodable>(_ body: Body) throws -> Data {
         do {
-            return try encoder.encode(body)
+            return try jsonEncoder.encode(body)
         } catch {
             throw SupabaseError.encoding(String(describing: error))
         }
@@ -142,7 +168,7 @@ final class SupabaseClient {
         // 如果 T 是 EmptyResponse 就直接返回，否则交给下面报解码错误。
         if data.isEmpty, let empty = EmptyResponse() as? T { return empty }
         do {
-            return try decoder.decode(T.self, from: data)
+            return try jsonDecoder.decode(T.self, from: data)
         } catch {
             // 把原始返回的前 300 个字符带上 —— 不然只看到
             // "keyNotFound(CodingKeys(...))" 根本不知道服务器到底返回了什么
@@ -152,13 +178,13 @@ final class SupabaseClient {
         }
     }
 
-    private static let encoder: JSONEncoder = {
+    static let jsonEncoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         return encoder
     }()
 
-    private static let decoder: JSONDecoder = {
+    static let jsonDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -199,6 +225,7 @@ struct EmptyResponse: Decodable {}
 enum SupabaseError: LocalizedError {
 
     case badURL(String)
+    case cancelled
     case network
     case http(status: Int, message: String)
     case encoding(String)
@@ -209,6 +236,8 @@ enum SupabaseError: LocalizedError {
         case .badURL(let path):
             "内部错误：网址拼错了（\(path)）"
 
+        case .cancelled:
+            "请求已取消。"
         case .network:
             "连不上服务器。检查一下网络，或者稍后再试。"
 
@@ -265,6 +294,29 @@ enum SupabaseDate {
     }()
 
     static func parse(_ text: String) -> Date? {
-        withFraction.date(from: text) ?? plain.date(from: text)
+        // ⚠️ Postgres 的时间戳带**微秒**（6 位小数），
+        //    而 ISO8601DateFormatter 只认 3 位（毫秒）。
+        //    多出来的位数会让它**直接解析失败** —— 而且返回的字符串
+        //    看起来完全正常（2026-10-08T12:34:56.789123+00:00），
+        //    不实测根本想不到问题出在这里。
+        let normalized = normalizeFraction(text)
+        return withFraction.date(from: normalized) ?? plain.date(from: normalized)
+    }
+
+    /// 把小数秒截到 3 位
+    private static func normalizeFraction(_ text: String) -> String {
+        guard let dot = text.firstIndex(of: ".") else { return text }
+
+        let digitsStart = text.index(after: dot)
+        var digitsEnd = digitsStart
+        while digitsEnd < text.endIndex, text[digitsEnd].isNumber {
+            digitsEnd = text.index(after: digitsEnd)
+        }
+
+        let count = text.distance(from: digitsStart, to: digitsEnd)
+        guard count > 3 else { return text }
+
+        let cut = text.index(digitsStart, offsetBy: 3)
+        return String(text[text.startIndex..<cut]) + String(text[digitsEnd...])
     }
 }

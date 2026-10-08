@@ -35,7 +35,7 @@ final class SupabaseAuthService: AuthService {
         // 这一步是同步的（只是读钥匙串），所以 App 打开就能直接进去，
         // 不会先闪一下登录页再跳走。
         if let session = Self.loadSession() {
-            client.setAccessToken(session.accessToken)
+            client.setSession(accessToken: session.accessToken, userID: session.account.id)
         }
     }
 
@@ -74,7 +74,7 @@ final class SupabaseAuthService: AuthService {
             throw AuthError.emailConfirmationRequired
         }
 
-        client.setAccessToken(token)
+        client.setSession(accessToken: token, userID: user.id)
         return try await finishSignIn(user: user, accessToken: token, refreshToken: response.refreshToken)
     }
 
@@ -100,7 +100,7 @@ final class SupabaseAuthService: AuthService {
             throw AuthError.wrongCredentials
         }
 
-        client.setAccessToken(token)
+        client.setSession(accessToken: token, userID: user.id)
         return try await finishSignIn(user: user, accessToken: token, refreshToken: response.refreshToken)
     }
 
@@ -110,7 +110,7 @@ final class SupabaseAuthService: AuthService {
         // 先告诉服务器作废这个 token。
         // 失败也无所谓 —— 本地照样清干净，用户要的是"我退出了"。
         try? await client.post("/auth/v1/logout", body: EmptyBody())
-        client.setAccessToken(nil)
+        client.setSession(accessToken: nil, userID: nil)
         Keychain.delete(Self.sessionKey)
     }
 
@@ -189,7 +189,13 @@ final class SupabaseAuthService: AuthService {
 
         // ⚠️ 顺序有讲究：这条必须在下面那些通用判断之前。
         //    "invalid login credentials" 也带 400，先被通用分支吃掉就翻错了。
-        if lower.contains("invalid login credentials") || lower.contains("invalid_grant") {
+        // 三种写法都要认：
+        //   · "invalid login credentials" 是**消息文本**（真服务器返回的就是这个）
+        //   · "invalid_grant"      是 OAuth 标准错误码
+        //   · "invalid_credentials" 是真服务器返回的 error_code 字段
+        if lower.contains("invalid login credentials")
+            || lower.contains("invalid_grant")
+            || lower.contains("invalid_credentials") {
             return AuthError.wrongCredentials
         }
         if lower.contains("already registered") || lower.contains("already been registered")
@@ -264,9 +270,4 @@ private struct AuthResponse: Decodable {
     let user: AuthUser?
 }
 
-/// `profiles` 表的一行
-private struct ProfileRow: Decodable {
-    let displayName: String
-    let avatarSeed: Int
-    let inviteCode: String
-}
+// `ProfileRow` 定义在 SupabaseChatService.swift —— 两个服务共用一份。

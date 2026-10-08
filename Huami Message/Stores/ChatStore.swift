@@ -128,6 +128,10 @@ final class ChatStore {
             // 这样"界面上显示的"和"数据库里存的"永远一致，不会出现对不上的情况。
             refreshFromLocal()
             AppLog.info(.data, "后台同步完成，耗时 \(Stopwatch.format(watch.milliseconds))")
+        } catch SupabaseError.cancelled {
+            // 任务被取消是正常情况（比如用户切换了登录状态），
+            // 不该在日志里留一条"同步失败"吓人
+            AppLog.info(.data, "后台同步已取消")
         } catch {
             AppLog.error(.data, "后台同步失败（界面不受影响）：\(String(describing: error))")
         }

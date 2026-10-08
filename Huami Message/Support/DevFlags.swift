@@ -78,6 +78,11 @@ enum DevFlags {
         UserDefaults.standard.string(forKey: "openChatName") ?? ""
     }
 
+    /// 启动时自动往第一个会话发一条消息（验证真服务器发消息链路）
+    static var sendText: String {
+        UserDefaults.standard.string(forKey: "sendText") ?? ""
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

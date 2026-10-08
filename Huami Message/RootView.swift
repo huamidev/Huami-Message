@@ -110,21 +110,38 @@ struct RootView: View {
             .environment(auth)
             .interactiveDismissDisabled()
         }
+        // 开发用：自动建号并登录，省得每次截图都手打。
+        //
+        // ⚠️ **必须放在独立的 .task 里，不能放进下面那个同步任务。**
+        //
+        // 因为登录会让 auth.isSignedIn 变化，而下面那个任务的 id 就是它 ——
+        // id 一变，SwiftUI 会**取消正在跑的旧任务**，正在飞的网络请求跟着一起断。
+        // 我一开始就把它写在里面，结果同步在查档案那一步被取消了，
+        // 日志显示"网络失败：cancelled"，看着像服务器的问题，其实是自己取消的。
         .task {
+            guard DevFlags.devSignIn, auth.account == nil else { return }
+            await auth.signUp(email: DevFlags.devEmail,
+                              password: DevFlags.devPassword,
+                              confirmPassword: DevFlags.devPassword)
+            if auth.account == nil {
+                // 已经注册过就直接登录
+                await auth.signIn(email: DevFlags.devEmail, password: DevFlags.devPassword)
+            }
+        }
+        // ⚠️ 用 `.task(id: auth.isSignedIn)` 而不是 `.task {`。
+        //
+        // 因为接上真服务器之后，**同步必须等登录完成**才开始 ——
+        // 服务器要靠登录凭证才知道"该给你看哪些数据"。
+        // 用 .task { } 的话它只跑一次，用户登录完就再也不会同步了。
+        //
+        // 加上 id 之后，登录状态一变这个任务就会重跑。
+        .task(id: auth.isSignedIn) {
             // 开发用开关
             if DevFlags.resetTerms { hasAcceptedTerms = false }
             if DevFlags.acceptTerms { hasAcceptedTerms = true }
 
-            // 开发用：自动建号并登录，省得每次截图都手打
-            if DevFlags.devSignIn, auth.account == nil {
-                await auth.signUp(email: DevFlags.devEmail,
-                                  password: DevFlags.devPassword,
-                                  confirmPassword: DevFlags.devPassword)
-                if auth.account == nil {
-                    // 已经注册过就直接登录
-                    await auth.signIn(email: DevFlags.devEmail, password: DevFlags.devPassword)
-                }
-            }
+            // 没登录就不同步 —— 服务器不知道该给你什么
+            guard auth.isSignedIn else { return }
 
             await store.start()
 
@@ -132,6 +149,11 @@ struct RootView: View {
             if !DevFlags.addFriendCode.isEmpty {
                 try? await store.addFriend(inviteCode: DevFlags.addFriendCode)
             }
+            // 开发自检：往第一个会话发一条消息
+            if !DevFlags.sendText.isEmpty, let first = store.conversations.first {
+                await store.send(DevFlags.sendText, to: first.friend.id)
+            }
+
             // 开发自检：启动并加载完之后，执行一次"删除账号"，验证真的清干净
             if DevFlags.devWipe {
                 try? await Task.sleep(for: .milliseconds(500))

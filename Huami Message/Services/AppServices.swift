@@ -43,10 +43,7 @@ enum AppServices {
     }
 
     static func makeChatService() -> ChatService {
-        // 聊天的真实现还在做（要 REST + 实时推送两部分）。
-        // 在它完成之前一律用演示数据 ——
-        // 免得出现"登录是真的、聊天是假的"这种半真半假的状态，
-        // 那种情况比全是假的还难查。
-        MockChatService()
+        guard let client else { return MockChatService() }
+        return SupabaseChatService(client: client)
     }
 }
