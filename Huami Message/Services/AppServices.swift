@@ -42,6 +42,11 @@ enum AppServices {
         return SupabaseAuthService(client: client)
     }
 
+    static func makeAIService() -> AIService {
+        guard let client else { return MockAIService() }
+        return SupabaseAIService(client: client)
+    }
+
     static func makeChatService() -> ChatService {
         guard let client else { return MockChatService() }
         return SupabaseChatService(client: client)

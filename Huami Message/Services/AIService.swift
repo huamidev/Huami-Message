@@ -96,11 +96,24 @@ protocol AIService {
 
     /// 润色一句话。
     /// 注意：这里**只传一句话，不传聊天记录** —— 这是刻意的隐私设计。
-    func polish(_ text: String, style: PolishStyle) -> AsyncStream<String>
+    /// 【为什么返回的是"会抛错的流"，而不是普通流】
+    ///
+    /// 因为接上真服务器之后，失败是常态而不是意外：网断了、超时了、
+    /// AI 额度用完了、云函数挂了。
+    ///
+    /// 如果用不抛错的流，这些情况只能"安静地什么都不发生" ——
+    /// 用户盯着一个永远转不完的圈，而我们连个日志都没法给他看。
+    /// 让错误能传出来，界面才能说一句"网络不太顺，再试一次"。
+    /// 当前用的是不是假 AI。
+    /// 界面据此决定要不要显示「演示模式」的提示 ——
+    /// 接了真 AI 之后那个提示必须自己消失，不能靠人记得去删。
+    var isDemoData: Bool { get }
+
+    func polish(_ text: String, style: PolishStyle) -> AsyncThrowingStream<String, Error>
 
     /// 小助手：看一段对话，按指定的意图给出判断。
     ///
     /// 返回的是一串事件：状态提示 → 一个一个小方块 → 最后的建议动作。
     /// 拆成事件是为了让方块**一个一个冒出来**，而不是让用户对着转圈等好几秒。
-    func advise(context: AssistantContext, intent: AssistantIntent) -> AsyncStream<AssistantEvent>
+    func advise(context: AssistantContext, intent: AssistantIntent) -> AsyncThrowingStream<AssistantEvent, Error>
 }

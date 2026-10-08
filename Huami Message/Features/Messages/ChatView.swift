@@ -37,6 +37,10 @@ struct ChatView: View {
     @State private var assistantSharedCount = 0
     @State private var assistantTask: Task<Void, Never>?
 
+    /// 小助手失败时要说的话。
+    /// 空着的时候界面什么都不显示 —— 失败和"还在算"必须能区分开。
+    @State private var assistantError: String?
+
     /// 滚动用的锚点。它不是给用户看的，只是给代码一个「滚到这里」的坐标。
     private let bottomAnchor = "bottom"
 
@@ -201,6 +205,16 @@ struct ChatView: View {
             proxy.scrollTo(bottomAnchor, anchor: .bottom)
 
             if DevFlags.openPolish, draft.isEmpty {
+                // ⚠️ 必须等一下再打开。
+                //
+                // 因为启动时登录用的 fullScreenCover 还盖在最上面 ——
+                // 在那个覆盖还在的时候请求弹窗会被**无声吞掉**：不报错、
+                // 不警告，就是什么都不显示。更坑的是**弹窗里的 .task 照样会跑**，
+                // 所以 AI 请求发出去了、钱花了，用户却什么都看不见。
+                //
+                // （同一类问题我在"加好友"页也踩过一次。）
+                try? await Task.sleep(for: .seconds(2))
+
                 // 用同一个常量同时喂给输入框和面板，避免"读回来的值不一样"
                 let demo = "你昨天怎么没来？大家都等你很久了，你这样不太好吧。"
                 draft = demo
@@ -341,26 +355,41 @@ struct ChatView: View {
             assistantStatus = "正在读这段对话"
             assistantBlocks = []
             assistantRecommendation = nil
+            assistantError = nil
             assistantSharedCount = context.messages.count
         }
 
         assistantTask = Task {
-            for await event in MockAIService().advise(context: context, intent: intent) {
-                if Task.isCancelled { return }
-                switch event {
-                case .status(let text):
-                    assistantStatus = text
+            do {
+                for try await event in AppServices.makeAIService()
+                    .advise(context: context, intent: intent) {
+                    if Task.isCancelled { return }
+                    switch event {
+                    case .status(let text):
+                        assistantStatus = text
 
-                case .block(let block):
-                    withAnimation(.snappy(duration: 0.3)) {
-                        assistantBlocks.append(block)
-                    }
+                    case .block(let block):
+                        withAnimation(.snappy(duration: 0.3)) {
+                            assistantBlocks.append(block)
+                        }
 
-                case .recommendation(let text):
-                    withAnimation(.snappy(duration: 0.3)) {
-                        assistantRecommendation = text
+                    case .recommendation(let text):
+                        withAnimation(.snappy(duration: 0.3)) {
+                            assistantRecommendation = text
+                        }
                     }
                 }
+            } catch {
+                if Task.isCancelled { return }
+                // 失败必须说出来。真网络一定会出问题（断网、超时、AI 额度用完），
+                // 只留一个永远转不完的"正在想…"是最让人火大的。
+                withAnimation(.snappy(duration: 0.3)) {
+                    assistantStatus = nil
+                    assistantError = (error as? LocalizedError)?.errorDescription
+                        ?? "小助手这次没成功，等一下再试。"
+                }
+                Haptics.warning()
+                return
             }
             guard !Task.isCancelled else { return }
             assistantStatus = nil
@@ -377,6 +406,7 @@ struct ChatView: View {
             assistantStatus = nil
             assistantBlocks = []
             assistantRecommendation = nil
+            assistantError = nil
             assistantSharedCount = 0
         }
     }
@@ -467,6 +497,7 @@ struct ChatView: View {
                         status: assistantStatus,
                         blocks: assistantBlocks,
                         recommendation: assistantRecommendation,
+                        error: assistantError,
                         sharedMessageCount: assistantSharedCount
                     )
                     .padding(.horizontal, 12)

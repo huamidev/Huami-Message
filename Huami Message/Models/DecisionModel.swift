@@ -35,6 +35,21 @@ struct DecisionOption: Identifiable, Codable, Hashable {
 }
 
 /// 一个小方块。
+///
+/// 【一个很坑的 Swift 细节，值得记下来】
+///
+/// 下面这些属性写了默认值（`var id = UUID()`、`var options = []`），
+/// 但**自动合成的解码器会忽略这些默认值** —— 它照样要求 JSON 里有这些字段。
+/// 默认值只在用 `init()` 构造时生效。
+///
+/// 结果是：服务器发来的 JSON 里没有 `id`（那是客户端自己用的），
+/// 解码直接失败，界面上一个方块都出不来。
+/// 日志里只会看到一个"看不懂的方块"，很难联想到是默认值的问题。
+///
+/// 所以下面在 extension 里自己写了一个解码器：
+/// 能缺的字段就缺，缺了用默认值补。
+/// （放在 extension 里是为了保住自动生成的 init —— 
+///   写在本体里会让那个 init 消失，假数据那边就用不了了。）
 struct DecisionBlock: Identifiable, Codable, Hashable {
 
     enum Kind: String, Codable {
@@ -63,6 +78,31 @@ struct DecisionBlock: Identifiable, Codable, Hashable {
 
     /// kind == .level 时量级代表什么，比如「危险等级」
     var levelCaption: String?
+}
+
+extension DecisionBlock {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // 服务器不会发 id（那是客户端自己用的），缺了就自己生成一个
+        id = (try? container.decode(UUID.self, forKey: .id)) ?? UUID()
+        kind = try container.decode(Kind.self, forKey: .kind)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        options = (try? container.decode([DecisionOption].self, forKey: .options)) ?? []
+        level = try container.decodeIfPresent(Int.self, forKey: .level)
+        levelCaption = try container.decodeIfPresent(String.self, forKey: .levelCaption)
+    }
+}
+
+extension DecisionOption {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(UUID.self, forKey: .id)) ?? UUID()
+        label = try container.decode(String.self, forKey: .label)
+        percent = try container.decode(Int.self, forKey: .percent)
+        // 服务器只在"推荐的"那一项上发这个字段，缺了就当 false
+        isRecommended = (try? container.decode(Bool.self, forKey: .isRecommended)) ?? false
+    }
 }
 
 /// 小助手一次完整的判断。

@@ -88,6 +88,63 @@ final class SupabaseClient {
         _ = try await perform(.post, path: path, query: query, body: payload, prefer: prefer)
     }
 
+    /// 发一个请求，然后把响应**当成一行一行的流**读出来。
+    ///
+    /// 专门给"服务器一边算一边往回吐"的接口用（SSE，Server-Sent Events）。
+    /// 普通请求要等整个响应回来，而这种要**边到边处理** ——
+    /// 不然"打字机效果"就只能靠客户端假装，那是骗人的。
+    ///
+    /// `URLSession.bytes(for:)` 给的正是这种能力：一个可以逐行消费的字节流。
+    func streamLines<Body: Encodable>(_ path: String,
+                                      body: Body) async throws -> AsyncThrowingStream<String, Error> {
+        var request = URLRequest(url: config.endpoint(path))
+        request.httpMethod = "POST"
+        request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken ?? config.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try Self.encode(body)
+        // 流式请求不能设太短的超时 —— 模型思考本来就要几秒
+        request.timeoutInterval = 60
+
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await session.bytes(for: request)
+        } catch {
+            if (error as? URLError)?.code == .cancelled { throw SupabaseError.cancelled }
+            AppLog.error(.network, "POST \(path) 流式请求失败：\(error.localizedDescription)")
+            throw SupabaseError.network
+        }
+
+        guard let http = response as? HTTPURLResponse else { throw SupabaseError.network }
+
+        guard (200..<300).contains(http.statusCode) else {
+            // 失败时响应体不是流式的事件，而是一小段 JSON 错误
+            var text = ""
+            for try await line in bytes.lines { text += line }
+            let message = Self.extractMessage(from: Data(text.utf8))
+            AppLog.error(.network, "POST \(path) → \(http.statusCode)：\(message)")
+            throw SupabaseError.http(status: http.statusCode, message: message)
+        }
+
+        AppLog.info(.network, "POST \(path) → \(http.statusCode)（流式）")
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await line in bytes.lines {
+                        if Task.isCancelled { break }
+                        continuation.yield(line)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: SupabaseError.network)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     enum Method: String {
         case get = "GET"
         case post = "POST"

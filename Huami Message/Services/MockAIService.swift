@@ -12,7 +12,10 @@ final class MockAIService: AIService {
 
     // MARK: 模块一：润色（只看一句话）
 
-    func polish(_ text: String, style: PolishStyle) -> AsyncStream<String> {
+    /// 假 AI —— 界面上会显示「演示模式」的提示
+    let isDemoData = true
+
+    func polish(_ text: String, style: PolishStyle) -> AsyncThrowingStream<String, Error> {
         // 演示用的三个版本。故意做得风格差异明显，好让你看清三种模式的区别。
         let demo: [PolishStyle: String] = [
             .tactful: "昨天没看到你，是临时有事吗？大家等到挺晚的，都有点担心你。",
@@ -25,11 +28,11 @@ final class MockAIService: AIService {
 
     // MARK: 模块二：小助手（看整段对话）
 
-    func advise(context: AssistantContext, intent: AssistantIntent) -> AsyncStream<AssistantEvent> {
+    func advise(context: AssistantContext, intent: AssistantIntent) -> AsyncThrowingStream<AssistantEvent, Error> {
         let name = context.friendName
         let model = Self.decisionModel(for: intent, friendName: name)
 
-        return AsyncStream { continuation in
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 // 先给一句状态提示 —— 什么都不显示地干等是最难受的
                 continuation.yield(.status("正在读你和\(name)的这段对话"))
@@ -223,8 +226,8 @@ final class MockAIService: AIService {
     /// 这个区别很重要：动画是你先有完整文字、再假装它慢慢出现；
     /// 流式是你真的只拿到了前半句。后者才是接真 AI 时必须的做法，
     /// 所以我们从一开始就用真的。
-    private static func stream(_ text: String, chunk: Int, interval: Duration) -> AsyncStream<String> {
-        AsyncStream { continuation in
+    private static func stream(_ text: String, chunk: Int, interval: Duration) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
             let task = Task {
                 var index = text.startIndex
                 while index < text.endIndex, !Task.isCancelled {

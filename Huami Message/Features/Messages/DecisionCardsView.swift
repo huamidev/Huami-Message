@@ -23,6 +23,9 @@ struct DecisionCardsView: View {
     /// 最后的建议动作
     let recommendation: String?
 
+    /// 出错时要说的话。有它的时候不显示"还在想"，而是直接说清出了什么问题。
+    let error: String?
+
     /// 这次把多少条消息发给了 AI（如实告知，是隐私承诺的一部分）
     let sharedMessageCount: Int
 
@@ -30,7 +33,9 @@ struct DecisionCardsView: View {
         VStack(alignment: .leading, spacing: 8) {
             label
 
-            if blocks.isEmpty {
+            if let error {
+                errorCard(error)
+            } else if blocks.isEmpty {
                 thinkingCard
             } else {
                 ForEach(blocks) { block in
@@ -84,6 +89,26 @@ struct DecisionCardsView: View {
         .padding(.vertical, 11)
         .background(Theme.surfaceAlt,
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    /// 失败
+    private func errorCard(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 12))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("这次没成功")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(message)
+                    .font(.system(size: 12.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(Theme.danger)
+        .padding(12)
+        .background(Theme.danger.opacity(0.09),
+                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     // MARK: - 一个方块

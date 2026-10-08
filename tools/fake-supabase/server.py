@@ -32,7 +32,7 @@ import re
 import sys
 import uuid
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 # ============================================================================
@@ -159,6 +159,11 @@ def apply_query(rows, query):
 
 class Handler(BaseHTTPRequestHandler):
 
+    # 用 HTTP/1.1 —— 分块传输（chunked）要求它。
+    # 流式响应必须分块发，否则客户端要等整个响应结束才拿得到数据，
+    # "打字机效果"就变成了"等十秒然后一次性出现"。
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, fmt, *args):
         pass   # 用我们自己的日志
 
@@ -187,6 +192,26 @@ class Handler(BaseHTTPRequestHandler):
         print(f"    apikey={self.headers.get('apikey', '(无)')}  auth={short or '(无)'}")
         if note:
             print(f"    {note}")
+
+    # ---------- 流式响应（SSE）----------
+
+    def _stream_start(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        # 分块传输：不告诉客户端总长度，边算边发
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+
+    def _stream_send(self, obj):
+        """发一条 SSE 事件"""
+        payload = f"data: {json.dumps(obj, ensure_ascii=False)}\n\n".encode()
+        self.wfile.write(f"{len(payload):X}\r\n".encode() + payload + b"\r\n")
+        self.wfile.flush()
+
+    def _stream_end(self):
+        self.wfile.write(b"0\r\n\r\n")
+        self.wfile.flush()
 
     def _me(self):
         """从 Authorization 头里认出"我是谁"（假服务里直接查 token 表）"""
@@ -328,6 +353,75 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, target["id"])
             return
 
+        # ── AI 云函数（真实现是 Supabase Edge Function 里那个 ai-proxy）──
+        if parsed.path == "/functions/v1/ai-proxy":
+            import time
+
+            mode = body.get("mode")
+            self._stream_start()
+
+            if mode == "polish":
+                # 润色：把一整句切碎，一小段一小段发 —— 模拟模型的流式输出
+                style = body.get("style")
+                samples = {
+                    "tactful": "昨天没看到你，是临时有事吗？大家等到挺晚的，都有点担心你。",
+                    "concise": "昨天怎么没来？大家等了很久。",
+                    "warm": "昨天没见到你，还有点担心。要是遇到什么事，随时跟我说。",
+                }
+                text = samples.get(style, samples["tactful"])
+                print(f"    → 200 流式润色（{style}），共 {len(text)} 字")
+                for i in range(0, len(text), 4):
+                    self._stream_send({"type": "text", "value": text[i:i + 4]})
+                    time.sleep(0.06)
+                self._stream_send({"type": "done"})
+                self._stream_end()
+                return
+
+            if mode == "advise":
+                intent = body.get("intent")
+                # 故意在一次响应里发 status + 多个 block + recommendation，
+                # 和真云函数的事件形状完全一致
+                events = [
+                    {"type": "status", "value": "正在读这段对话"},
+                    {"type": "block", "value": {
+                        "kind": "options",
+                        "title": "当前真实意图",
+                        "prompt": "他是在等你解释吗？",
+                        "options": [
+                            {"label": "不是，他要的是态度", "percent": 79, "isRecommended": True},
+                            {"label": "是", "percent": 21},
+                        ],
+                    }},
+                    {"type": "block", "value": {
+                        "kind": "level",
+                        "prompt": "这件事的严重程度",
+                        "level": 6,
+                        "levelCaption": "危险等级",
+                    }},
+                    {"type": "block", "value": {
+                        "kind": "options",
+                        "prompt": "现在解释原因有用吗？",
+                        "options": [
+                            {"label": "没用，听着像找借口", "percent": 85, "isRecommended": True},
+                            {"label": "有用", "percent": 15},
+                        ],
+                    }},
+                    {"type": "recommendation",
+                     "value": "回的时候先接住情绪，再讲事实。**第一句里不要出现「因为」**。"},
+                ]
+                print(f"    → 200 流式判断（{intent}），{len(events)} 个事件")
+                for event in events:
+                    self._stream_send(event)
+                    time.sleep(0.4)
+                self._stream_send({"type": "done"})
+                self._stream_end()
+                return
+
+            print(f"    → 400 不认识的 mode={mode}")
+            self._stream_send({"type": "done"})
+            self._stream_end()
+            return
+
         print("    → 404 没有这个接口")
         self._send(404, {"message": "Not found"})
 
@@ -352,7 +446,15 @@ def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 54321
     print(f"假 Supabase 服务已启动：http://127.0.0.1:{port}")
     print("（Ctrl-C 停止）\n")
-    HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    # ⚠️ 必须用 ThreadingHTTPServer（多线程），不能用 HTTPServer（单线程）。
+    #
+    # 因为我把协议设成了 HTTP/1.1，浏览器/客户端默认会**复用连接**（keep-alive）。
+    # 单线程服务器在一个连接关闭之前不会去处理别的连接 ——
+    # 于是 App 并发发三个润色请求时，只有第一个能通，另外两个永远排着队。
+    #
+    # 这个坑很隐蔽：它看起来像"客户端并发有问题"，其实是测试工具的限制。
+    # 真实服务器当然支持并发，所以这里也要像个真实服务器。
+    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 
 if __name__ == "__main__":

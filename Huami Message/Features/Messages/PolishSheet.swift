@@ -21,7 +21,7 @@ struct PolishSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    private let ai = MockAIService()
+    private let ai = AppServices.makeAIService()
 
     /// 每个风格当前已经「长」出来的文字
     @State private var streamed: [PolishStyle: String] = [:]
@@ -34,7 +34,11 @@ struct PolishSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
-                    demoBadge
+                    // 只在用假 AI 的时候显示。接了真的之后它会自动消失 ——
+                    // 靠人记得去删提示，一定会忘。
+                    if ai.isDemoData {
+                        demoBadge
+                    }
                     originalCard
 
                     ForEach(PolishStyle.allCases) { style in
@@ -70,8 +74,17 @@ struct PolishSheet: View {
     }
 
     private func pump(_ style: PolishStyle) async {
-        for await chunk in ai.polish(original, style: style) {
-            streamed[style, default: ""] += chunk
+        do {
+            for try await chunk in ai.polish(original, style: style) {
+                streamed[style, default: ""] += chunk
+            }
+        } catch {
+            // 真网络一定会失败：超时、断网、AI 额度用完。
+            // **在出问题的那张卡片上说清楚** ——
+            // 让用户盯着一个永远转不完的圈是最差的做法。
+            // （三张卡是并发跑的，可能只有一张失败，所以不能只在顶上挂个横幅。）
+            failures[style] = (error as? LocalizedError)?.errorDescription
+                ?? "这次没成功，再试一次。"
         }
         finished.insert(style)
     }
@@ -80,6 +93,9 @@ struct PolishSheet: View {
 
     /// 诚实很重要：现在还不是真 AI，界面上必须说清楚，
     /// 否则你自己测试时会被误导，以后给朋友测试也会被吐槽。
+    /// 每种风格各自的错误信息。三张卡是并发跑的，可能只有一张失败。
+    @State private var failures: [PolishStyle: String] = [:]
+
     private var demoBadge: some View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -112,6 +128,7 @@ struct PolishSheet: View {
     private func variantCard(_ style: PolishStyle) -> some View {
         let text = streamed[style] ?? ""
         let done = finished.contains(style)
+        let failure = failures[style]
 
         return VStack(alignment: .leading, spacing: 10) {
 
@@ -133,17 +150,31 @@ struct PolishSheet: View {
                 Spacer()
             }
 
-            // 正在输出的地方：文字 + 一闪一闪的光标
-            HStack(alignment: .bottom, spacing: 3) {
-                Text(text)
-                    .font(.system(size: 15))
-                    .foregroundStyle(Theme.textPrimary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if !done && !text.isEmpty {
-                    StreamingCaret()
+            if let failure {
+                // 出错：说清楚是什么问题，而不是留一个空白的卡片
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 12))
+                    Text(failure)
+                        .font(.system(size: 13))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
                 }
+                .foregroundStyle(Theme.danger)
+                .frame(minHeight: 40, alignment: .topLeading)
+            } else {
+                // 正在输出的地方：文字 + 一闪一闪的光标
+                HStack(alignment: .bottom, spacing: 3) {
+                    Text(text)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Theme.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !done && !text.isEmpty {
+                        StreamingCaret()
+                    }
+                }
+                .frame(minHeight: 40, alignment: .topLeading)
             }
-            .frame(minHeight: 40, alignment: .topLeading)
 
             // 输出完了才出现「用这个」按钮。
             // 半成品不能选 —— 否则用户会点到一个只写了一半的版本。
