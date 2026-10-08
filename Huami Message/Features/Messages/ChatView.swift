@@ -10,6 +10,19 @@ struct ChatView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// 输入框的焦点。
+    ///
+    /// 【为什么放在聊天页，而不是输入栏内部】
+    ///
+    /// "点聊天区收起键盘"需要**聊天页**去关掉输入框的焦点。
+    /// 焦点状态原来藏在 ChatInputBar 里，外面够不着 ——
+    /// 我上次就因为这个绕过去用了 UIKit 的 `resignFirstResponder`，
+    /// **结果在 SwiftUI 里根本不管用**：SwiftUI 的焦点不走 UIKit 响应链。
+    /// 用户看到的就是"点空白区收不回键盘"。
+    ///
+    /// 教训：为了"少改几个文件"而绕开正确的做法，代价是功能直接不能用。
+    @FocusState private var inputFocused: Bool
+
     @State private var draft = ""
 
     /// 记住这次发送用了哪种润色风格。
@@ -201,6 +214,7 @@ struct ChatView: View {
                         }
 
                         ChatInputBar(
+                            focused: $inputFocused,
                             text: $draft,
                             selection: $draftSelection,
                             toolsOpen: toolsOpen,
@@ -650,20 +664,22 @@ struct ChatView: View {
         .scrollIndicators(.hidden)
         // 手指往下拖就把键盘收起来 —— iOS 上大家都习惯这个手势，
         // 少了它会被觉得「不是原生 App」
-        .scrollDismissesKeyboard(.interactively)
+        // .immediately：**一开始划就收**。
+        //
+        // 原来用的 .interactively 是"键盘跟着手指走" ——
+        // 用户原话是"下滑的操作感受也很烂"：粘手、还占着屏幕高度，
+        // 划到一半松手它又弹回来。聊天列表不需要这种跟手感。
+        .scrollDismissesKeyboard(.immediately)
         // ── 点聊天区收起键盘 ──
         //
         // 用 simultaneousGesture 而不是 gesture：
         // 后者会**抢走**子视图的点击（图片气泡点开大图、长按菜单都会失灵）。
         // simultaneous 是"我听到了，但不拦着别人"。
         //
-        // 收起键盘这里直接退第一响应者，而不是把 FocusState 传上来：
-        // 输入框那边有好几处用到焦点状态，为这一件事把状态提到父层，
-        // 改动面比收益大。这条是 UIKit 时代就有的标准写法。
         .simultaneousGesture(
             TapGesture().onEnded {
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                                to: nil, from: nil, for: nil)
+                // 必须改 @FocusState —— resignFirstResponder 在 SwiftUI 里不生效
+                withAnimation(.snappy(duration: 0.2)) { inputFocused = false }
             }
         )
         // 一进来就停在最新一条，而不是从最顶上开始。

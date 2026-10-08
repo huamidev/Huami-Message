@@ -23,6 +23,10 @@ struct ChatInputBar: View {
 
     @Environment(AuthStore.self) private var auth
 
+    /// 输入框的焦点。**由聊天页持有** ——
+    /// 因为"点聊天区收键盘"要由它来关掉，藏在里面外面够不着。
+    var focused: FocusState<Bool>.Binding
+
     @Binding var text: String
 
     /// 输入框里光标/选中的位置。
@@ -41,7 +45,6 @@ struct ChatInputBar: View {
     var onVoiceProblem: (String) -> Void
     var onSend: () -> Void
 
-    @FocusState private var isFocused: Bool
 
     /// 是不是在"语音模式"。
     ///
@@ -240,7 +243,7 @@ struct ChatInputBar: View {
 
     private func switchToVoice() {
         Haptics.tap()
-        isFocused = false          // 先收键盘，不然切换时会顶一下
+        focused.wrappedValue = false          // 先收键盘，不然切换时会顶一下
         withAnimation(.snappy(duration: 0.24)) { voiceMode = true }
     }
 
@@ -248,7 +251,7 @@ struct ChatInputBar: View {
         Haptics.tap()
         withAnimation(.snappy(duration: 0.24)) { voiceMode = false }
         // 切回打字时把光标放回去 —— 用户切回来就是要打字的
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { isFocused = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { focused.wrappedValue = true }
     }
 
     private var inputPill: some View {
@@ -265,7 +268,7 @@ struct ChatInputBar: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 16))
                 .lineLimit(1...5)
-                .focused($isFocused)
+                .focused(focused)
 
             // Telegram 这个位置是表情。我们放 AI 改写 ——
             // 同一个视觉位置，但按下去真的有事发生
