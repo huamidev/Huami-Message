@@ -100,29 +100,18 @@ struct ChatInputBar: View {
             .animation(.snappy(duration: 0.22), value: voiceMode)
         }
         .padding(7)
-        // ── 透明的输入栏 ──
+        // ── 输入栏**没有自己的背景** ──
         //
-        // 原来用的是 .card(.elevated)：一块不透明的白卡片。
-        // 用户要的是**透明** —— 背景能透上来。
+        // 之前这里铺过两层：先是 .card(.elevated)（不透明白卡片），
+        // 后来换成 .regularMaterial（毛玻璃）—— 两次都是"一整块"，
+        // 用户两次都说"不要单独弄出来一块"。
         //
-        // 用 .regularMaterial（毛玻璃）+ 一点点白色叠加：
-        //   · Material 会**实时取身后的颜色**，所以背景一变它就跟着变
-        //   · 纯透明（什么都不铺）不行 —— 消息从下面滚过去时会糊成一团，
-        //     文字压文字完全看不清
-        // 这一层薄白是为了保证"从底下滚过去的东西"不至于把输入框搅浑。
-        .background {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(.regularMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(Theme.surface.opacity(0.35))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .strokeBorder(Theme.separator, lineWidth: 0.6)
-                }
-                .shadow(color: .black.opacity(0.06), radius: 12, y: 3)
-        }
+        // 所以现在什么都不铺：三个零件（回形针 / 输入框 / 麦克风）
+        // **各自有自己的底**，直接浮在聊天背景上。
+        //
+        // 顺带一个好处：整条栏不再需要在视觉上和背景"对齐颜色"——
+        // 它压根不参与颜色。之前两次改都是在跟"这块圆角矩形的颜色
+        // 跟背景差一点点"较劲，去掉就一了百了。
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
 
