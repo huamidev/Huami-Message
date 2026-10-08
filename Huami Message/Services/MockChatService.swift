@@ -79,6 +79,35 @@ final class MockChatService: ChatService {
         }
     }
 
+    /// 用邀请码加好友（假实现）。
+    ///
+    /// 真的实现是把这个码发给服务器、服务器去查这个人是谁。
+    /// 假实现没法查，所以**从邀请码本身派生出一个稳定的假好友** ——
+    /// 同一个码永远得到同一个人。
+    ///
+    /// 这一点很重要：如果每次加都随机生成一个人，
+    /// 那"加两次会不会变成两个好友"这类问题就永远测不出来。
+    func addFriend(inviteCode: String) async throws -> Friend {
+        try await Task.sleep(for: latency)
+
+        let code = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard code.count == 8 else { throw ChatError.inviteCodeNotFound }
+
+        let id = Self.friendID(fromCode: code)
+        if let existing = friends.first(where: { $0.id == id }) {
+            throw ChatError.alreadyFriends(existing.name)
+        }
+
+        let friend = Friend(
+            id: id,
+            name: Self.strangerName(for: code),
+            avatarSeed: Int(code.utf8.first ?? 0) % 6
+        )
+        friends.append(friend)
+        messages[friend.id] = []
+        return friend
+    }
+
     // MARK: - 模拟「好友回你一句」
 
     /// 隔 2.5 秒让好友回一句 —— 用来演示「实时收消息，界面自动更新」。
@@ -128,6 +157,31 @@ final class MockChatService: ChatService {
     }
 
     private static func friendID(_ n: Int) -> UUID { id("11111111", n) }
+
+    /// 邀请码 → 稳定的 UUID。
+    ///
+    /// ⚠️ 这里**故意不用 `UUID(uuidString:)!`**。
+    /// 我在这个文件里已经被强制解包坑过一次了（见上面 id() 的注释）。
+    /// 直接用 16 个字节构造，没有"字符串格式对不对"这一层，也就没有崩的可能。
+    private static func friendID(fromCode code: String) -> UUID {
+        var bytes = Array(code.utf8)
+        // 不足 16 字节用 '0' 补齐 —— 必须是确定性的，不能随机
+        while bytes.count < 16 { bytes.append(0x30) }
+        let b = Array(bytes.prefix(16))
+        return UUID(uuid: (b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+                           b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]))
+    }
+
+    /// 陌生的"新好友"名字。同一邀请码永远得到同一个人。
+    private static let strangerNames = [
+        "周叙", "许一诺", "陆沉", "沈知遥", "顾南", "程也", "白露", "闻笛",
+    ]
+
+    private static func strangerName(for code: String) -> String {
+        // 用字节和算一个稳定的下标（不用 hashValue —— 它每个进程都不一样）
+        let sum = code.utf8.reduce(0) { ($0 &* 31 &+ Int($1)) & 0xFFFF }
+        return strangerNames[sum % strangerNames.count]
+    }
     private static func seedMessageID(_ n: Int) -> UUID { id("22222222", n) }
 
     /// 自动回复的 id：同一个好友的第 n 句回复，永远是同一个 id

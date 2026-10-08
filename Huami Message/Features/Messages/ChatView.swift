@@ -440,6 +440,7 @@ struct ChatView: View {
                 // 看不见的顶部锚点（开发自检用来滚到最顶上）
                 Color.clear.frame(height: 1).id(topAnchor)
 
+
                 ForEach(items) { item in
                     switch item {
                     case .daySeparator(let date):
@@ -499,6 +500,18 @@ struct ChatView: View {
         // 实时知道用户是不是贴着底部。
         // onScrollGeometryChange 是 iOS 18 的新能力，能在滚动过程中读到
         // 内容尺寸和当前可视区域 —— 这是实现"别把用户拽走"的关键信息。
+        // 空会话提示放在**覆盖层**而不是滚动内容里。
+        //
+        // 为什么：内容比屏幕短的时候，`.defaultScrollAnchor(.bottom)` 会把内容压到底部，
+        // 于是提示文字正好落在底部面板底下被盖住（我第一版就是这样，
+        // "说点什么吧"那行完全看不见）。
+        // 做成覆盖层并留出底部空间，它才会出现在真正空着的那块地方。
+        .overlay {
+            if messages.isEmpty {
+                emptyChatHint
+                    .allowsHitTesting(false)
+            }
+        }
         .onScrollGeometryChange(for: Bool.self) { geometry in
             // 距离底部 140 磅以内就算「贴着底部」。
             // 留这段余量，是因为列表末尾有一段专门给输入栏的空白。
@@ -533,6 +546,25 @@ struct ChatView: View {
                 proxy.scrollTo(bottomAnchor, anchor: .bottom)
             }
         }
+    }
+
+    /// 新加的好友还没有任何消息时显示。
+    /// 不处理的话这里就是一整屏空白 —— 看起来像 App 坏了。
+    private var emptyChatHint: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "hand.wave")
+                .font(.system(size: 24))
+                .foregroundStyle(Theme.textTertiary)
+            Text("你们还没有聊过")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+            Text("说点什么吧")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textTertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        // 往上抬，躲开底部的小助手方块和输入栏
+        .padding(.bottom, 190)
     }
 
     // MARK: - 「回到最新」

@@ -255,6 +255,16 @@ final class ChatStore {
         local.saveReport(Report(friendID: friendID, reason: reason, note: note))
     }
 
+    /// 用邀请码加好友。
+    ///
+    /// 出错时**抛出去**而不是自己吞掉 —— 界面要告诉用户
+    /// "码不对"还是"已经是好友了"，这两种情况该说的话完全不一样。
+    func addFriend(inviteCode: String) async throws {
+        let friend = try await remote.addFriend(inviteCode: inviteCode)
+        local.save(friend: friend)
+        refreshFromLocal()
+    }
+
     /// 注销账号 / 清空全部数据。
     ///
     /// 现在只清本地（因为我们还没接服务器）。

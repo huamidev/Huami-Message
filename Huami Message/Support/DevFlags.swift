@@ -72,6 +72,22 @@ enum DevFlags {
         UserDefaults.standard.string(forKey: "legalDoc") ?? ""
     }
 
+    /// 启动时自动打开指定名字的好友会话（截图验证用）。
+    /// 比 -openChat 更精确：那个只会开第一个会话，而新加的好友排在最后。
+    static var openChatName: String {
+        UserDefaults.standard.string(forKey: "openChatName") ?? ""
+    }
+
+    /// 启动时自动打开「加好友」
+    static var openAddFriend: Bool {
+        UserDefaults.standard.bool(forKey: "openAddFriend")
+    }
+
+    /// 启动时自动用这个邀请码加一个好友（用来验证加好友流程）
+    static var addFriendCode: String {
+        UserDefaults.standard.string(forKey: "addFriendCode") ?? ""
+    }
+
     /// 启动后立刻执行"删除账号"（用来验证真的删干净了，不用手点确认框）
     static var devWipe: Bool {
         UserDefaults.standard.bool(forKey: "devWipe")

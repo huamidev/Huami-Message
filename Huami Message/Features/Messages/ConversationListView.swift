@@ -19,6 +19,10 @@ import SwiftUI
 struct ConversationListView: View {
 
     @Environment(ChatStore.self) private var store
+    @Environment(AuthStore.self) private var auth
+
+    /// 是否正在显示「加好友」
+    @State private var showAddFriend = false
 
     /// 导航栈。
     /// 用「代码显式管理的栈」而不是让 NavigationLink 自己管，有两个好处：
@@ -87,6 +91,26 @@ struct ConversationListView: View {
                 .contentMargins(.bottom, 96, for: .scrollContent)
             }
             .navigationTitle("消息")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Haptics.tap()
+                        showAddFriend = true
+                    } label: {
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                }
+            }
+            // ⚠️ 环境要在这里**再注入一次**。
+            // 外层挂在 TabView 上的 .environment(...) 传不到弹窗内容里 ——
+            // 这个坑我在做登录页时踩过一次，崩溃栈顶是
+            // EnvironmentValues.subscript.getter。
+            .sheet(isPresented: $showAddFriend) {
+                AddFriendView()
+                    .environment(store)
+                    .environment(auth)
+            }
             .navigationDestination(for: Conversation.self) { conversation in
                 ChatView(conversation: conversation)
             }
@@ -102,9 +126,35 @@ struct ConversationListView: View {
         }
         // 开发用：带 -openChat 1 启动时自动进第一个会话。
         // 这里加了 id:，是为了等会话列表加载完之后再执行一次。
+        // 开发自检：自动打开「加好友」。
+        //
+        // ⚠️ 这里**必须延迟**，不能立刻打开。
+        // 因为启动时登录用的 fullScreenCover 还盖在最上面 ——
+        // 在那个覆盖还在的时候请求弹窗，会被**无声地吞掉**：
+        // 不报错、不警告，就是什么都不发生。
+        //
+        // 这个坑在做登录页时也遇到过一次（那次是环境没传进去直接崩）。
+        // 凡是"弹窗 / 全屏覆盖"，都要留意它们之间的时序。
+        .task {
+            guard DevFlags.openAddFriend else { return }
+            try? await Task.sleep(for: .seconds(2))
+            showAddFriend = true
+        }
         .task(id: store.conversations.count) {
-            guard DevFlags.openChat, path.isEmpty,
-                  let first = store.conversations.first else { return }
+
+            guard path.isEmpty else { return }
+
+            // 按名字打开（更精确）
+            if !DevFlags.openChatName.isEmpty {
+                if let target = store.conversations.first(where: {
+                    $0.friend.name == DevFlags.openChatName
+                }) {
+                    path = [target]
+                }
+                return
+            }
+
+            guard DevFlags.openChat, let first = store.conversations.first else { return }
             path = [first]
         }
     }
@@ -131,17 +181,41 @@ struct ConversationListView: View {
     }
 
     private var emptyHint: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 28))
+                .font(.system(size: 30))
                 .foregroundStyle(Theme.textTertiary)
+
             Text("还没有聊天")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Theme.textTertiary)
-            Text("第 1 步接上服务器后，就能加真实好友了")
+                .foregroundStyle(Theme.textSecondary)
+
+            Text(store.isDemoData
+                 ? "上面的好友是演示数据，可以直接点进去看看界面。"
+                 : "用邀请码加一个好友就开始聊了。")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textTertiary)
+                .multilineTextAlignment(.center)
+
+            // 空状态里必须给一个**能点的出口**。
+            // 只说"还没有聊天"等于把用户扔在原地 —— 他知道该干什么，但得自己去找。
+            if !store.isDemoData {
+                Button {
+                    Haptics.tap()
+                    showAddFriend = true
+                } label: {
+                    Text("加好友")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 10)
+                        .background(Theme.myBubbleGradient, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
         }
+        .padding(.horizontal, 40)
     }
 }
 

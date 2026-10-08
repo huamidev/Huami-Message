@@ -45,4 +45,44 @@ protocol ChatService {
     /// 用 AsyncStream 的好处：界面只管「一条条地收」，
     /// 完全不用管底下是 WebSocket、长轮询还是别的什么。
     func incomingMessages() -> AsyncStream<Message>
+
+    /// 用邀请码加一个好友，返回加上的那个人。
+    ///
+    /// 【为什么是邀请码，而不是读通讯录】
+    ///
+    /// 读通讯录要申请权限，用户看到"这个 App 想访问你的通讯录"就直接卸载了；
+    /// 而且那等于把用户的关系网整个上传，是个很重的隐私承诺。
+    ///
+    /// 邀请码反过来：**由用户决定给谁**。多一步，但那条线守住了。
+    func addFriend(inviteCode: String) async throws -> Friend
+}
+
+// MARK: - 加好友会出的错
+
+/// 加好友相关的错误。
+///
+/// 和 `AuthError` 一样，每种错误自带一句能给用户看的人话 ——
+/// 界面直接显示 `errorDescription` 就行，不用在视图里写一堆 if-else 翻译错误码。
+enum ChatError: LocalizedError, Equatable {
+
+    case inviteCodeNotFound
+    case alreadyFriends(String)
+    case cannotAddSelf
+    case network
+    case unknown(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .inviteCodeNotFound:
+            "没找到这个邀请码。检查一下有没有输错？邀请码是 8 位字母和数字。"
+        case .alreadyFriends(let name):
+            "\(name)已经在你的好友列表里了。"
+        case .cannotAddSelf:
+            "这是你自己的邀请码。"
+        case .network:
+            "网络好像不太顺，等一下再试。"
+        case .unknown(let message):
+            message
+        }
+    }
 }
