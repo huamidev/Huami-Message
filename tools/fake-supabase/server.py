@@ -360,6 +360,14 @@ class Handler(BaseHTTPRequestHandler):
             mode = body.get("mode")
             self._stream_start()
 
+            if mode == "ping":
+                # 和真云函数一样：直接回，不调用 AI（探针不该花钱）
+                print("    → 200 探针 pong")
+                self._stream_send({"type": "pong"})
+                self._stream_send({"type": "done"})
+                self._stream_end()
+                return
+
             if mode == "polish":
                 # 润色：把一整句切碎，一小段一小段发 —— 模拟模型的流式输出
                 style = body.get("style")

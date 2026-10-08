@@ -37,6 +37,13 @@ enum AppServices {
         return SupabaseClient(config: config)
     }()
 
+    /// 检查服务器有没有配置好（建表、关邮箱验证、部署云函数）。
+    /// 演示模式下永远返回空 —— 没连服务器，就没什么可检查的。
+    static func runServerDiagnostics() async -> [ServerIssue] {
+        guard let client else { return [] }
+        return await ServerDiagnostics.check(client)
+    }
+
     static func makeAuthService() -> AuthService {
         guard let client else { return MockAuthService() }
         return SupabaseAuthService(client: client)

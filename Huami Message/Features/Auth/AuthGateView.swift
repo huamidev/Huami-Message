@@ -28,6 +28,9 @@ struct AuthGateView: View {
     @State private var showPassword = false
     @State private var showResetHint = false
 
+    /// 服务器自检发现的问题。空数组表示一切正常 —— 界面什么都不显示。
+    @State private var serverIssues: [ServerIssue] = []
+
     @FocusState private var focus: Field?
     private enum Field { case email, password, confirm }
 
@@ -44,6 +47,7 @@ struct AuthGateView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     header
+                    if !serverIssues.isEmpty { setupCard }
                     modePicker
                     fields
                     if let message = auth.errorMessage { errorBanner(message) }
@@ -55,6 +59,12 @@ struct AuthGateView: View {
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
+        }
+        // 进登录页时检查一次服务器配置。
+        // 这一步**不阻塞任何操作** —— 用户照样可以试着注册，
+        // 只是如果注定失败，旁边会告诉他为什么。
+        .task {
+            serverIssues = await AppServices.runServerDiagnostics()
         }
         .alert("找回密码", isPresented: $showResetHint) {
             Button("知道了") {}
@@ -81,6 +91,70 @@ struct AuthGateView: View {
                 .foregroundStyle(Theme.textSecondary)
         }
         .padding(.top, 10)
+    }
+
+    // MARK: - 服务器还没配好
+
+    /// 把"服务器缺什么"直接摆在登录页上。
+    ///
+    /// 【为什么值得专门做这一块】
+    ///
+    /// 漏掉配置的后果是**很难懂**的：注册完登不进去、好友列表永远是空的。
+    /// 报错通常是 "PGRST205" 或者干脆什么都不说。
+    /// 而这个项目里"开发者"和"用户"是同一个人 ——
+    /// 与其让他去翻文档，不如让 App 自己说清楚要去点哪里。
+    ///
+    /// 配置正确的服务器上这个卡片不会出现，所以它**会自己消失**。
+    private var setupCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 7) {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 12))
+                Text("服务器还有 \(serverIssues.count) 项没配置好")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Theme.warning)
+
+            ForEach(serverIssues) { issue in
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(issue.title)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+
+                    Text(issue.detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(issue.steps.enumerated()), id: \.offset) { index, step in
+                            HStack(alignment: .top, spacing: 6) {
+                                Text("\(index + 1).")
+                                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(Theme.accent)
+                                Text(step)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(Theme.surfaceAlt,
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Theme.warning.opacity(0.09),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Theme.warning.opacity(0.35), lineWidth: 1)
+        )
     }
 
     // MARK: - 登录 / 注册 切换

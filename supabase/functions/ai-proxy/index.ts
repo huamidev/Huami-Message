@@ -61,6 +61,16 @@ Deno.serve(async (req) => {
 
     // ── ② 读参数 ──
     const payload = await req.json();
+
+    // 探针：App 用它检查"函数部署了没有"。
+    // **故意不调用 DeepSeek** —— 一个健康检查不该花钱。
+    if (payload?.mode === "ping") {
+      return new Response(
+        `data: ${JSON.stringify({ type: "pong" })}\n\ndata: ${JSON.stringify({ type: "done" })}\n\n`,
+        { headers: { ...CORS, "Content-Type": "text/event-stream" } },
+      );
+    }
+
     const apiKey = Deno.env.get("DEEPSEEK_API_KEY");
     if (!apiKey) {
       return json({ error: "服务器没有配置 DEEPSEEK_API_KEY" }, 500);
