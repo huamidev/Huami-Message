@@ -120,6 +120,27 @@ final class SupabaseAIService: AIService {
         case done
     }
 
+    /// AI 服务专用的错误说法。
+    ///
+    /// 【为什么要单独翻译一次 404】
+    ///
+    /// `SupabaseError` 里对 404 的统一说法是
+    /// 「服务器上找不到这个接口。可能是数据库还没建好（schema.sql 跑了吗？）」
+    /// —— 那句话是给数据库接口写的。
+    ///
+    /// 而 AI 这边 404 只有一个原因：**云函数还没部署**。
+    /// 自动分析开着的时候，对方每发一条消息都会撞上它，
+    /// 用户会看到一张红卡片说"数据库没建好"，然后去查一个完全不相干的东西。
+    private static func translate(_ error: Error) -> Error {
+        if case SupabaseError.http(let status, _) = error, status == 404 {
+            return SupabaseError.http(
+                status: 404,
+                message: "AI 云函数还没部署。在项目目录运行 supabase functions deploy ai-proxy 就行。"
+            )
+        }
+        return error
+    }
+
     private func events(for request: ProxyRequest) -> AsyncThrowingStream<Event, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -132,7 +153,7 @@ final class SupabaseAIService: AIService {
                     }
                     continuation.finish()
                 } catch {
-                    continuation.finish(throwing: error)
+                    continuation.finish(throwing: Self.translate(error))
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
