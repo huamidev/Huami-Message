@@ -333,6 +333,10 @@ final class VoiceRecorder {
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         try? FileManager.default.removeItem(at: fileURL)
 
+        // 录到的字节数 —— 空录音（比如麦克风没真的打开）一眼就能看出来：
+        // 22kHz 单声道录 2 秒大约 6~8 KB，只有几百字节就说明什么都没录到。
+        AppLog.info(.data, "语音录制：\(data.count) 字节 / \(String(format: "%.1f", duration)) 秒")
+
         Haptics.success()
         return (data, min(duration, Self.maximumSeconds))
     }

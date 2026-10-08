@@ -46,16 +46,37 @@ final class VoicePlayer: NSObject, AVAudioPlayerDelegate {
                     data = loaded
                 }
 
+                // ⚠️ 音频会话的设置**必须离开主线程** ——
+                //    和录音那边是同一个坑：setActive 在主线程会卡住 UI。
+                //
+                // 另外这里用 .playback 是有讲究的：
+                // **它会无视手机侧面的静音开关**。
+                // 如果这句设置失败（或者被跳过），系统会退回默认类型，
+                // 那个是**尊重静音开关**的 —— 用户开着静音就"听不见"，
+                // 而界面上播放按钮转得好好的，看起来像播放器坏了。
                 let session = AVAudioSession.sharedInstance()
-                try session.setCategory(.playback, mode: .default)
-                try session.setActive(true)
+                try await Task.detached(priority: .userInitiated) {
+                    try session.setCategory(.playback, mode: .default)
+                    try session.setActive(true)
+                }.value
 
                 let player = try AVAudioPlayer(data: data)
                 player.delegate = self
                 player.prepareToPlay()
-                player.play()
+                let started = player.play()
                 self.player = player
                 playingURL = url
+
+                // 这几行是**用来分辨问题在哪一层**的：
+                //   bytes 很小 / duration 为 0 → 录音本身是空的（问题在录）
+                //   bytes 正常但 started=false → 播放器起不来
+                //   都正常却听不见 → 输出路由或静音开关的问题
+                AppLog.info(.data, "语音播放：\(data.count) 字节，"
+                            + "时长 \(String(format: "%.1f", player.duration))s，"
+                            + "play()=\(started)，"
+                            + "音量 \(String(format: "%.2f", player.volume))，"
+                            + "会话类型 \(session.category.rawValue)，"
+                            + "输出 \(session.currentRoute.outputs.first?.portType.rawValue ?? "无")")
             } catch {
                 AppLog.error(.network, "语音播放失败：\(error.localizedDescription)")
                 Haptics.warning()
