@@ -117,6 +117,23 @@ struct ChatInputBar: View {
         // 跟背景差一点点"较劲，去掉就一了百了。
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
+        // ── 用**和整页画布一模一样的颜色**铺到屏幕最底 ──
+        //
+        // 为什么需要它：聊天页是压栈进 TabView 的，标签栏虽然被藏了，
+        // **它占的那块区域还在**，而且系统会给它画一层底（白色）。
+        // 不盖的话，屏幕最下面会露出一条和画布不一样的色带。
+        //
+        // 为什么要 .ignoresSafeAreaEdges: .bottom 而不是 .ignoresSafeArea()：
+        // 后者在这个位置不生效（试过，用红色探针量出来底边停在安全区边界）。
+        //
+        // ⚠️ 关键：这个背景**只挂在输入栏这一层**，
+        //    不要挂到外面那个装着"渐隐 + 回到最新"的 VStack 上 ——
+        //    我上一版就是挂在外面，于是整片区域变成不透明，
+        //    把消息挡住了（用户报的"遮挡信息"就是这个）。
+        //
+        //    颜色必须**等于** Theme.background：等于就没边，
+        //    不等于就一定看得出一条色带（这一点已经来回折腾过三次）。
+        .background(Theme.background, ignoresSafeAreaEdges: .bottom)
 
         // ── 录音中的提示 ──
         //
@@ -204,8 +221,7 @@ struct ChatInputBar: View {
                 .foregroundStyle(recorder.isRecording ? Theme.accent : Theme.textSecondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 9)
-        .background(Theme.surfaceAlt.opacity(0.9), in: Capsule())
+        // **不加底** —— 用整页那个画布（见文件末尾的说明）
         .contentShape(Capsule())
         .gesture(
             // DragGesture(minimumDistance: 0) 而不是长按手势：
@@ -287,7 +303,13 @@ struct ChatInputBar: View {
         .animation(.snappy(duration: 0.18), value: canSend)
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
-        .background(Theme.surfaceAlt, in: Capsule())
+        // **输入框也不加底。**
+        //
+        // 这是最后一块 —— 前面拆了四次都留着它，所以屏幕中间
+        // 一直有一条 #F7F8FA（画布是 #F2F3F5），用户看到的就是"还有一层画布"。
+        //
+        // 没有底之后靠 placeholder 文字和那个小头像说明"这里能打字"，
+        // 和消息气泡共用同一张画布 —— 也就是用户要的"全都用那个画布"。
     }
 
     // MARK: - 圆形按钮
@@ -309,12 +331,12 @@ struct ChatInputBar: View {
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(filled ? .white : (active ? Theme.accent : Theme.textSecondary))
             .frame(width: 34, height: 34)
+            // 只有"发送"那个按钮保留实心底 —— 它是个**动作按钮**，
+            // 不是输入区，需要一眼认出"点这里发出去"。
+            // 其余（回形针 / 麦克风）不加底，直接浮在画布上。
             .background {
                 if filled {
                     Circle().fill(Theme.myBubbleGradient)
-                } else {
-                    Circle().fill(Theme.surfaceAlt)
-                        .overlay { Circle().strokeBorder(Theme.separator, lineWidth: 0.8) }
                 }
             }
             .rotationEffect(.degrees(rotated ? 90 : 0))
@@ -365,3 +387,29 @@ extension TextSelection {
     }
 
 }
+
+
+// ─────────────────────────────────────────────────────────────
+// 关于"为什么输入栏所有零件都没有底色"
+//
+// 来回改了四次，把结论写在这里，免得以后再走一遍：
+//
+//   第一次：一整块不透明白卡片（.card(.elevated)）—— 用户："不要单独弄出来一块"
+//   第二次：换成毛玻璃材质（.regularMaterial）—— 还是"一块"，只是能透过去
+//   第三次：去掉整块，但每个零件留着自己的小底
+//   第四次：**小底也全去掉** —— 用户："全都用中央信息气泡下面的那个画布"
+//
+// 折腾四次的原因是：我一直把"透明"理解成
+// "**能透出后面的颜色**"（半透明 / 毛玻璃），
+// 而用户要的是"**根本就没有这一层**"。
+//
+// 这两个是完全不同的东西：
+//   半透明 = 我铺了一层，只是它不挡光   → 颜色永远和背景差一点点
+//   没有   = 我不参与颜色               → 不可能有色差
+//
+// 验证方法（这次就是这么找到的）：截图转 BMP，
+// 逐行取像素量颜色。BMP 没有 PNG 的滤波，读到的是真值。
+// 结果是：屏幕左右边缘从头到尾都是画布色 #F2F3F5，
+// 只有正中间那条 #F7F8FA —— 那不是"一条带"，是输入框胶囊自己。
+// **量一下比猜十次都快。**
+// ─────────────────────────────────────────────────────────────
