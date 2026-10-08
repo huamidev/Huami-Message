@@ -147,16 +147,30 @@ final class SupabaseAuthService: AuthService {
             return false
         }
 
-        struct Body: Encodable { let refresh_token: String }
+        struct Body: Encodable { let refreshToken: String }
+
+        /// ⚠️ 属性名必须是 **camelCase**，不能照抄 JSON 里的 snake_case。
+        ///
+        /// 我们的 JSONDecoder 开了 .convertFromSnakeCase ——
+        /// 它会把 JSON 的 `access_token` 先转成 `accessToken`，再拿这个去找属性。
+        /// 属性叫 `access_token` 的话，找的是 `access_token`，**永远对不上**。
+        ///
+        /// 表现极具误导性：服务器返回 200、body 里明明有 access_token，
+        /// 我们却说"keyNotFound"，日志上看起来像"服务器拒绝了请求"。
+        /// 我因此还写了一句"服务器拒绝了 refresh token"的错误结论。
+        ///
+        /// （Body 那边反过来 —— Encodable 时 .convertToSnakeCase 会把
+        ///   refreshToken 转成 refresh_token，所以那边写 camelCase 才对。
+        ///   一个写对了一个写错了，正是最容易漏掉的那种。）
         struct Response: Decodable {
-            let access_token: String
-            let refresh_token: String?
+            let accessToken: String
+            let refreshToken: String?
         }
 
         guard let response: Response = try? await client.post(
             "/auth/v1/token",
             query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
-            body: Body(refresh_token: refresh),
+            body: Body(refreshToken: refresh),
             as: Response.self
         ) else {
             AppLog.error(.network, "刷新失败：服务器拒绝了 refresh token（可能已被吊销）")
@@ -166,8 +180,8 @@ final class SupabaseAuthService: AuthService {
         // ⚠️ 服务器有时会**同时换掉 refresh token**（轮换）。
         // 只更新 access 而丢掉新的 refresh，下次刷新就会失败 ——
         // 表现是"用着用着突然要重新登录"。所以两个都要存。
-        session.accessToken = response.access_token
-        if let rotated = response.refresh_token, !rotated.isEmpty {
+        session.accessToken = response.accessToken
+        if let rotated = response.refreshToken, !rotated.isEmpty {
             session.refreshToken = rotated
         }
         saveSession(session)
