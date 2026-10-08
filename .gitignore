@@ -23,3 +23,6 @@ xcuserdata/
 # 以后接入 Supabase / DeepSeek 时的密钥文件 —— 绝对不要提交到 git
 Secrets.plist
 *.env
+
+# Supabase CLI 的临时文件（link 状态之类，不该提交）
+supabase/.temp/
