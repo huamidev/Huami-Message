@@ -155,6 +155,11 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "fakeRecording")
     }
 
+    /// 启动时直接进语音模式（截图点不了麦克风按钮）
+    static var voiceMode: Bool {
+        UserDefaults.standard.bool(forKey: "voiceMode")
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

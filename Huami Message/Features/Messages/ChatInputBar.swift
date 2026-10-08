@@ -43,6 +43,18 @@ struct ChatInputBar: View {
 
     @FocusState private var isFocused: Bool
 
+    /// 是不是在"语音模式"。
+    ///
+    /// 【为什么改成模式切换，而不是一个常驻的麦克风按钮】
+    ///
+    /// 原来右边那个圆钮要"按住"才能录 —— 但它看起来就是个图标，
+    /// 没人知道要按住。用户第一反应是**点一下**，然后觉得"没反应"。
+    ///
+    /// 模式切换解决了这个：点一下，整个输入框**变成**「按住 说话」——
+    /// 这一步本身就是在告诉用户"接下来要按住"。
+    /// 微信也是这么做的，用户不用学。
+    @State private var voiceMode = DevFlags.voiceMode
+
     @State private var recorder = VoiceRecorder()
     /// 手指是不是已经上滑到"取消"区域了
     @State private var cancelling = false
@@ -59,73 +71,58 @@ struct ChatInputBar: View {
                          rotated: toolsOpen,
                          action: onToggleTools)
 
-            inputPill
+            inputArea
 
-            // 一个位置，两个身份
+            // 一个位置，三个身份：
+            //   语音模式 → 键盘（点它切回打字）
+            //   有字     → 发送
+            //   其他     → 麦克风（点它进语音模式）
             ZStack {
-                if canSend {
+                if voiceMode {
+                    circleButton(icon: "keyboard",
+                                 label: "切换到打字",
+                                 action: switchToText)
+                        .transition(.scale.combined(with: .opacity))
+                } else if canSend {
                     circleButton(icon: "arrow.up",
                                  label: "发送",
                                  filled: true,
                                  action: onSend)
                         .transition(.scale.combined(with: .opacity))
                 } else {
-                    // ⚠️ 麦克风**不是普通按钮** —— 它要"按住"。
-                    //
-                    // 用 DragGesture(minimumDistance: 0) 而不是长按手势：
-                    // 它一次性给了按下、拖动、松手三件事，
-                    // 而"上滑取消"正好需要一个拖动量。
-                    // 长按手势只能告诉你按够了没有，拿不到手指位置。
-                    circleLabel(icon: recorder.isRecording ? "waveform" : "mic.fill",
-                                active: recorder.isRecording)
-                        // contentShape：让整个圆都能按到，而不只是那根图标线条
-                        .contentShape(Circle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    // 这几行日志是**排查用的** ——
-                                    // "按下去没反应"可能是三层：手势没触发、
-                                    // 权限没拿到、录音器没起来。不打日志只能猜。
-                                    if !recorder.isRecording {
-                                        AppLog.info(.data, "麦克风：手指按下")
-                                        Task {
-                                            if await recorder.start() == false {
-                                                AppLog.error(.network, "麦克风：启动失败（多半是权限）")
-                                                onVoiceProblem("没有麦克风权限。去「设置 → 隐私与安全性 → 麦克风」里打开。")
-                                            } else {
-                                                AppLog.info(.data, "麦克风：开始录音")
-                                            }
-                                        }
-                                    }
-                                    cancelling = value.translation.height < -60
-                                }
-                                .onEnded { _ in
-                                    AppLog.info(.data, "麦克风：手指松开（正在录=\(recorder.isRecording)）")
-                                    guard recorder.isRecording else { return }
-                                    if cancelling {
-                                        recorder.cancel()
-                                    } else if let result = recorder.finish() {
-                                        onSendVoice(result.data, result.seconds)
-                                    } else {
-                                        // 太短：多半是误触，不发。
-                                        //
-                                        // 但**不能默默什么都不做** ——
-                                        // 用户分不清"误触被丢掉了"和"功能坏了"。
-                                        // 我第一版就是默默丢掉，结果收到的反馈是
-                                        // "点击无反应"。
-                                        Haptics.warning()
-                                        onVoiceProblem("说话时间太短了，按住多说一会儿再松手。")
-                                    }
-                                    cancelling = false
-                                }
-                        )
+                    circleButton(icon: "mic.fill",
+                                 label: "切换到语音",
+                                 action: switchToVoice)
                         .transition(.scale.combined(with: .opacity))
                 }
             }
-            .animation(.snappy(duration: 0.2), value: canSend)
+            .animation(.snappy(duration: 0.22), value: canSend)
+            .animation(.snappy(duration: 0.22), value: voiceMode)
         }
         .padding(7)
-        .card(.elevated, radius: 26)
+        // ── 透明的输入栏 ──
+        //
+        // 原来用的是 .card(.elevated)：一块不透明的白卡片。
+        // 用户要的是**透明** —— 背景能透上来。
+        //
+        // 用 .regularMaterial（毛玻璃）+ 一点点白色叠加：
+        //   · Material 会**实时取身后的颜色**，所以背景一变它就跟着变
+        //   · 纯透明（什么都不铺）不行 —— 消息从下面滚过去时会糊成一团，
+        //     文字压文字完全看不清
+        // 这一层薄白是为了保证"从底下滚过去的东西"不至于把输入框搅浑。
+        .background {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(.regularMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(Theme.surface.opacity(0.35))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .strokeBorder(Theme.separator, lineWidth: 0.6)
+                }
+                .shadow(color: .black.opacity(0.06), radius: 12, y: 3)
+        }
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
 
@@ -187,6 +184,83 @@ struct ChatInputBar: View {
     }
 
     // MARK: - 中间的胶囊
+
+    // MARK: - 中间的输入区
+
+    @ViewBuilder
+    private var inputArea: some View {
+        if voiceMode {
+            voiceHoldArea
+        } else {
+            inputPill
+        }
+    }
+
+    /// 语音模式的"按住说话"。
+    ///
+    /// ⚠️ **不能包在 Button 里** —— Button 自带点击手势，
+    /// 会把 DragGesture 吃掉，表现就是"按下去完全没反应"。
+    /// 这个坑已经踩过一次（右边那个麦克风圆钮）。
+    private var voiceHoldArea: some View {
+        HStack(spacing: 8) {
+            Image(systemName: recorder.isRecording ? "waveform" : "mic.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(recorder.isRecording ? Theme.accent : Theme.textSecondary)
+
+            Text(recorder.isRecording ? "正在录音…" : "按住 说话")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(recorder.isRecording ? Theme.accent : Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .background(Theme.surfaceAlt.opacity(0.9), in: Capsule())
+        .contentShape(Capsule())
+        .gesture(
+            // DragGesture(minimumDistance: 0) 而不是长按手势：
+            // 它一次性给了按下、拖动、松手三件事，
+            // 而"上滑取消"正好需要一个拖动量。
+            // 长按手势只能告诉你按够了没有，拿不到手指位置。
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if !recorder.isRecording {
+                        AppLog.info(.data, "语音：手指按下")
+                        Task {
+                            if await recorder.start() == false {
+                                onVoiceProblem("没有麦克风权限。去「设置 → 隐私与安全性 → 麦克风」里打开。")
+                            }
+                        }
+                    }
+                    cancelling = value.translation.height < -60
+                }
+                .onEnded { _ in
+                    guard recorder.isRecording else { return }
+                    if cancelling {
+                        recorder.cancel()
+                    } else if let result = recorder.finish() {
+                        onSendVoice(result.data, result.seconds)
+                    } else {
+                        // 太短：多半是误触。但**不能默默什么都不做** ——
+                        // 用户分不清"误触被丢掉了"和"功能坏了"。
+                        Haptics.warning()
+                        onVoiceProblem("说话时间太短了，按住多说一会儿再松手。")
+                    }
+                    cancelling = false
+                }
+        )
+    }
+
+    private func switchToVoice() {
+        Haptics.tap()
+        isFocused = false          // 先收键盘，不然切换时会顶一下
+        withAnimation(.snappy(duration: 0.24)) { voiceMode = true }
+    }
+
+    private func switchToText() {
+        Haptics.tap()
+        withAnimation(.snappy(duration: 0.24)) { voiceMode = false }
+        // 切回打字时把光标放回去 —— 用户切回来就是要打字的
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { isFocused = true }
+    }
 
     private var inputPill: some View {
         HStack(spacing: 8) {
