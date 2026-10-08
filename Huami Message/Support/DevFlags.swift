@@ -57,6 +57,21 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "verifyScrollFix")
     }
 
+    /// 直接当作"已同意服务条款"（省得每次截图都手点一遍同意页）
+    static var acceptTerms: Bool {
+        UserDefaults.standard.bool(forKey: "acceptTerms")
+    }
+
+    /// 清掉"已同意"的标记，让同意页重新出现（用来截图/检查这一页）
+    static var resetTerms: Bool {
+        UserDefaults.standard.bool(forKey: "resetTerms")
+    }
+
+    /// 直接打开某份法律文档："privacy" 或 "terms"
+    static var legalDoc: String {
+        UserDefaults.standard.string(forKey: "legalDoc") ?? ""
+    }
+
     /// **完全离线**：跳过一切网络请求，只用本地数据库。
     ///
     /// 这个开关不是玩具，它是用来**证明**「打开 App 瞬间就能操作」的：

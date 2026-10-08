@@ -14,6 +14,9 @@ import SwiftUI
 ///      第 1 步接入账号后把它接上。
 struct ProfileView: View {
 
+    /// 正在查看的法律文档（隐私政策 / 服务条款）
+    @State private var showDocument: LegalDocument?
+
     var body: some View {
         NavigationStack {
             AppPage {
@@ -22,6 +25,7 @@ struct ProfileView: View {
                         identityCard
                         privacyCard
                         settingsCard
+                        legalCard
                         aboutCard
                     }
                     .padding(16)
@@ -30,6 +34,17 @@ struct ProfileView: View {
                 .scrollIndicators(.hidden)
             }
             .navigationTitle("我")
+        }
+        .sheet(item: $showDocument) { document in
+            LegalDocumentView(document: document)
+        }
+        // 开发用：带 -legalDoc terms 直接打开对应文档
+        .task {
+            switch DevFlags.legalDoc {
+            case "privacy": showDocument = .privacy
+            case "terms":   showDocument = .terms
+            default:        break
+            }
         }
     }
 
@@ -91,6 +106,46 @@ struct ProfileView: View {
             settingRow("删除账号", value: "待接入", enabled: false)
             divider
             settingRow("举报与屏蔽", value: "待接入", enabled: false)
+        }
+        .padding(16)
+        .card()
+    }
+
+    /// 法律文档入口。
+    /// 放在这里而不是藏进"设置 → 关于 → 更多"里 ——
+    /// **审核员和用户都应该能两步之内找到它。**
+    private var legalCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionTitle("法律", icon: "doc.text.fill", tint: Theme.textSecondary)
+                .padding(.bottom, 12)
+
+            ForEach(LegalDocument.allCases) { document in
+                Button {
+                    Haptics.tap()
+                    showDocument = document
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(document.title)
+                                .font(.system(size: 14))
+                                .foregroundStyle(Theme.textPrimary)
+                            Text(document.summary)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textTertiary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if document != LegalDocument.allCases.last { divider }
+            }
         }
         .padding(16)
         .card()

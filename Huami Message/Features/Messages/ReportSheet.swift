@@ -146,9 +146,9 @@ struct ReportSheet: View {
                     .foregroundStyle(Theme.textPrimary)
             }
 
-            bullet("我们**零容忍**骚扰、色情、暴力、诈骗和垃圾信息。")
+            bullet("我们对以下内容**零容忍**：骚扰、色情、暴力、诈骗和垃圾信息。")
             bullet("举报会在 24 小时内被查看。核实后我们会封禁相关账号。")
-            bullet("你可以同时**拉黑**对方，这样他再也无法给你发消息。")
+            bullet("你可以同时把对方**拉黑**（这样他再也无法给你发消息）。")
             bullet("举报记录会保留，即使你之后删除了这个会话。")
         }
         .frame(maxWidth: .infinity, alignment: .leading)

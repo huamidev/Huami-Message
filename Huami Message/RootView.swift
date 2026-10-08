@@ -30,6 +30,10 @@ struct RootView: View {
 
     @State private var selection: Tab = RootView.initialTab
 
+    /// 是否已经同意过服务条款。
+    /// 用 AppStorage 存 —— 只问一次，之后不再打扰。
+    @AppStorage("hasAcceptedLegalTerms") private var hasAcceptedTerms = false
+
     /// 启动时默认停在哪个页面。
     /// 开发时可以用启动参数直接跳过去（见 Support/DevFlags.swift），
     /// 平时正常启动就是「消息」页，不受影响。
@@ -65,6 +69,25 @@ struct RootView: View {
         // 而且浅色更像 TIM 那种"办公软件"的感觉。
         // 以后要做深色，改 Theme.swift 加一套色值就行，界面不用动。
         .preferredColorScheme(.light)
-        .task { await store.start() }
+        // 首次启动必须先同意条款。
+        //
+        // 这是 App Store 审核指南 1.2 条的硬性要求：
+        // 能互发消息的 App，必须有写明零容忍条款的用户协议，且用户要明确同意。
+        //
+        // Binding 的 set 写成空操作，配合 interactiveDismissDisabled：
+        // 这一页**只能通过点「同意并继续」离开**，往下划关不掉。
+        // 一个能滑走的同意页，等于没有同意。
+        .fullScreenCover(isPresented: Binding(get: { !hasAcceptedTerms }, set: { _ in })) {
+            TermsGateView {
+                withAnimation(.snappy) { hasAcceptedTerms = true }
+            }
+            .interactiveDismissDisabled()
+        }
+        .task {
+            // 开发用开关
+            if DevFlags.resetTerms { hasAcceptedTerms = false }
+            if DevFlags.acceptTerms { hasAcceptedTerms = true }
+            await store.start()
+        }
     }
 }
