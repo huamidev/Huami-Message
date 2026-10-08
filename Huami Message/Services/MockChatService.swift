@@ -79,19 +79,19 @@ final class MockChatService: ChatService {
         }
     }
 
-    /// 用邀请码加好友（假实现）。
+    /// 用用户名加好友（假实现）。
     ///
     /// 真的实现是把这个码发给服务器、服务器去查这个人是谁。
-    /// 假实现没法查，所以**从邀请码本身派生出一个稳定的假好友** ——
+    /// 假实现没法查，所以**从用户名本身派生出一个稳定的假好友** ——
     /// 同一个码永远得到同一个人。
     ///
     /// 这一点很重要：如果每次加都随机生成一个人，
     /// 那"加两次会不会变成两个好友"这类问题就永远测不出来。
-    func addFriend(inviteCode: String) async throws -> Friend {
+    func addFriend(username: String) async throws -> Friend {
         try await Task.sleep(for: latency)
 
-        let code = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard code.count == 8 else { throw ChatError.inviteCodeNotFound }
+        let code = Username.normalize(username)
+        guard Username.isValid(code) else { throw ChatError.usernameNotFound }
 
         let id = Self.friendID(fromCode: code)
         if let existing = friends.first(where: { $0.id == id }) {
@@ -158,7 +158,7 @@ final class MockChatService: ChatService {
 
     private static func friendID(_ n: Int) -> UUID { id("11111111", n) }
 
-    /// 邀请码 → 稳定的 UUID。
+    /// 用户名 → 稳定的 UUID。
     ///
     /// ⚠️ 这里**故意不用 `UUID(uuidString:)!`**。
     /// 我在这个文件里已经被强制解包坑过一次了（见上面 id() 的注释）。
@@ -172,7 +172,7 @@ final class MockChatService: ChatService {
                            b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]))
     }
 
-    /// 陌生的"新好友"名字。同一邀请码永远得到同一个人。
+    /// 陌生的"新好友"名字。同一用户名永远得到同一个人。
     private static let strangerNames = [
         "周叙", "许一诺", "陆沉", "沈知遥", "顾南", "程也", "白露", "闻笛",
     ]

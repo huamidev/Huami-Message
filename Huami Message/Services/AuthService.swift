@@ -22,9 +22,6 @@ struct Account: Identifiable, Hashable, Codable {
     /// 头像底色（沿用好友头像那套：存数字，不存颜色）
     var avatarSeed: Int
 
-    /// 邀请码。加好友靠它，不走通讯录。
-    var inviteCode: String
-
     /// 简介（一句话介绍自己）。
     ///
     /// **好友能看到** —— 这就是 Telegram 的做法，用户要的也是那个。
@@ -185,12 +182,6 @@ enum AuthRules {
         password.count >= minimumPasswordLength
     }
 
-    /// 生成一个邀请码。
-    /// 去掉容易看错的 0/O/1/I —— 这个码是要用户手打的。
-    static func makeInviteCode() -> String {
-        let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
-        return String((0..<8).map { _ in alphabet.randomElement()! })
-    }
 }
 
 // ============================================================================

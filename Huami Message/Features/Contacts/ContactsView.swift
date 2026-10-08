@@ -61,7 +61,7 @@ struct ContactsView: View {
         }
     }
 
-    // MARK: - 我的邀请码
+    // MARK: - 我的用户名
 
     private var myCodeCard: some View {
         Button {
@@ -79,15 +79,15 @@ struct ContactsView: View {
                     Text("加好友")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("用邀请码，或者让对方扫你的码")
+                    Text("用用户名加我，或者让对方扫你的码")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textTertiary)
                 }
 
                 Spacer(minLength: 0)
 
-                if let code = auth.account?.inviteCode {
-                    Text(code)
+                if let username = auth.account?.username, !username.isEmpty {
+                    Text("@" + username)
                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.accent)
                         .padding(.horizontal, 8)
@@ -161,7 +161,7 @@ struct ContactsView: View {
             Text("还没有好友")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
-            Text("点上面的「加好友」，把邀请码给对方，或者让对方把码给你。")
+            Text("点上面的「加好友」，把你的用户名给对方，或者让对方把用户名给你。")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textTertiary)
                 .multilineTextAlignment(.center)

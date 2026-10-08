@@ -12,7 +12,7 @@ import Foundation
 //   GET  /rest/v1/profiles               好友的昵称和头像色
 //   GET  /rest/v1/messages               消息（按"我和某人之间"过滤）
 //   POST /rest/v1/messages               发消息
-//   POST /rest/v1/rpc/add_friend_by_invite   用邀请码加好友
+//   POST /rest/v1/rpc/add_friend_by_username  用用户名加好友
 //   WS   /realtime/v1/websocket          实时收新消息
 //
 // ============================================================================
@@ -170,9 +170,9 @@ final class SupabaseChatService: ChatService {
     // 加好友
     // ========================================================================
 
-    func addFriend(inviteCode: String) async throws -> Friend {
-        let code = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard code.count == 8 else { throw ChatError.inviteCodeNotFound }
+    func addFriend(username: String) async throws -> Friend {
+        let name = Username.normalize(username)
+        guard Username.isValid(name) else { throw ChatError.usernameNotFound }
 
         // 加好友要往数据库写**两行**（我→他、他→我）。
         // 让客户端分两次写是不安全的（可能只成功一半），
@@ -180,8 +180,8 @@ final class SupabaseChatService: ChatService {
         let friendID: UUID
         do {
             friendID = try await client.post(
-                "/rest/v1/rpc/add_friend_by_invite",
-                body: InviteCodeBody(code: code),
+                "/rest/v1/rpc/add_friend_by_username",
+                body: UsernameBody(username: name),
                 as: UUID.self
             )
         } catch {
@@ -198,16 +198,16 @@ final class SupabaseChatService: ChatService {
             ],
             as: [ProfileRow].self
         )
-        guard let profile = profiles.first else { throw ChatError.inviteCodeNotFound }
+        guard let profile = profiles.first else { throw ChatError.usernameNotFound }
 
         return Friend(id: profile.id, name: profile.displayName, avatarSeed: profile.avatarSeed)
     }
 
     /// 把数据库函数抛出的错误翻成人话。
-    /// `schema.sql` 里用的是 `raise exception '邀请码不存在'`，所以文案本来就是中文。
+    /// 数据库函数里用的是 `raise exception '没有这个人'`，所以文案本来就是中文。
     private static func translateAddFriend(_ error: Error) -> Error {
         guard case SupabaseError.http(_, let message) = error else { return error }
-        if message.contains("邀请码不存在") { return ChatError.inviteCodeNotFound }
+        if message.contains("没有这个人") { return ChatError.usernameNotFound }
         if message.contains("不能加自己") { return ChatError.cannotAddSelf }
         return error
     }
@@ -269,10 +269,6 @@ struct ProfileRow: Decodable {
     let id: UUID
     let displayName: String
     let avatarSeed: Int
-    let inviteCode: String
-
-    /// 用户名。可选的理由和 bio 一样：字段是后加的，
-    /// 用可选值能让加字段前后都能正常解码。
     let username: String?
 
     /// 简介。
@@ -327,6 +323,8 @@ struct NewMessageRow: Encodable {
     let polishedWith: String?
 }
 
-struct InviteCodeBody: Encodable {
-    let code: String
+/// 加好友时发给数据库函数的参数。
+/// 键名必须和函数签名里的参数名一致（`username`）。
+private struct UsernameBody: Encodable {
+    let username: String
 }

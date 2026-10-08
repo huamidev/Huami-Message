@@ -13,7 +13,7 @@ import Foundation
 //   POST /auth/v1/logout                      退出
 //   POST /auth/v1/recover                     发重置密码的邮件
 //
-// 再加上一个数据库查询，把用户档案（昵称、邀请码）读出来。
+// 再加上一个数据库查询，把用户档案（昵称、用户名）读出来。
 //
 // ============================================================================
 
@@ -180,7 +180,6 @@ final class SupabaseAuthService: AuthService {
             email: current.email,
             displayName: current.displayName,
             avatarSeed: current.avatarSeed,
-            inviteCode: current.inviteCode,
             bio: current.bio,
             username: rows.first?.username ?? cleaned
         )
@@ -245,7 +244,6 @@ final class SupabaseAuthService: AuthService {
             email: current.email,
             displayName: displayName,
             avatarSeed: avatarSeed,
-            inviteCode: rows.first?.inviteCode ?? current.inviteCode,
             bio: bio,
             username: rows.first?.username ?? current.username
         )
@@ -317,7 +315,7 @@ final class SupabaseAuthService: AuthService {
                               refreshToken: String?) async throws -> Account {
         let email = user.email ?? ""
 
-        // 档案（昵称、邀请码）是**数据库触发器**在注册时自动建的。
+        // 档案（昵称、用户名）是**数据库触发器**在注册时自动建的。
         // 理论上一定存在，但万一没有（比如 schema.sql 没跑全），
         // 不该让整个登录失败 —— 用默认值先让用户进去，问题记在日志里。
         let profile = try? await fetchProfile(userID: user.id)
@@ -330,7 +328,6 @@ final class SupabaseAuthService: AuthService {
             email: email,
             displayName: profile?.displayName ?? Account.name(from: email),
             avatarSeed: profile?.avatarSeed ?? 0,
-            inviteCode: profile?.inviteCode ?? "--------",
             bio: profile?.bio ?? "",
             username: profile?.username ?? ""
         )

@@ -192,7 +192,7 @@ struct ConversationListView: View {
 
             Text(store.isDemoData
                  ? "上面的好友是演示数据，可以直接点进去看看界面。"
-                 : "用邀请码加一个好友就开始聊了。")
+                 : "用用户名加一个好友就开始聊了。")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textTertiary)
                 .multilineTextAlignment(.center)

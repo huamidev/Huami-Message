@@ -98,7 +98,7 @@ struct ProfileView: View {
 
     private var identityCard: some View {
         // 排版照 Telegram 的「我」页面：
-        //   头像居中 → 名字 → 简介 → 次要信息（邮箱、邀请码）→ 编辑按钮
+        //   头像居中 → 名字 → @用户名 → 简介 → 邮箱 → 编辑按钮
         //
         // 为什么不把邮箱放在名字下面当主信息：
         // **用户认同的是"我叫什么"，不是"我注册时填了哪个邮箱"**。
@@ -148,18 +148,6 @@ struct ProfileView: View {
             }
 
             HStack(spacing: 8) {
-                if let code = auth.account?.inviteCode {
-                    HStack(spacing: 5) {
-                        Image(systemName: "ticket.fill").font(.system(size: 10))
-                        Text(code)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    }
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(Theme.accentSoft, in: Capsule())
-                }
-
                 Button {
                     Haptics.tap()
                     showEditProfile = true

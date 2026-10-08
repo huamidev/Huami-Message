@@ -51,8 +51,7 @@ final class MockAuthService: AuthService {
             id: UUID(),
             email: normalized,
             displayName: Account.name(from: normalized),
-            avatarSeed: Int.random(in: 0..<6),
-            inviteCode: AuthRules.makeInviteCode()
+            avatarSeed: Int.random(in: 0..<6)
         )
         records[normalized] = Record(
             account: account,

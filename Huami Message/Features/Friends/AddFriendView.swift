@@ -3,12 +3,12 @@ import CoreImage.CIFilterBuiltins
 
 /// 加好友。
 ///
-/// 【为什么用邀请码，而不是读通讯录】
+/// 【为什么用用户名，而不是读通讯录】
 ///
 /// 读通讯录要弹权限，用户看到「这个 App 想访问你的通讯录」很容易直接卸载；
 /// 而且那等于把用户的关系网整个上传 —— 是个很重的隐私承诺。
 ///
-/// 邀请码反过来：**由用户决定给谁**。多一步，但那条线守住了。
+/// 用户名反过来：**由用户决定给谁**。谁都可以加你，所以想不被找到就别把名字说出去。
 ///
 /// 这一页同时管两件事：把我的码给别人、把别人的码输进来。
 /// 放在一页是因为它们本来就是同一个动作的两面。
@@ -26,13 +26,13 @@ struct AddFriendView: View {
 
     @FocusState private var inputFocused: Bool
 
-    private var myCode: String { auth.account?.inviteCode ?? "--------" }
+    private var myUsername: String { auth.account?.username ?? "" }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
-                    myCodeCard
+                    myUsernameCard
                     addCard
                 }
                 .padding(16)
@@ -51,29 +51,28 @@ struct AddFriendView: View {
         }
     }
 
-    // MARK: - 我的邀请码
+    // MARK: - 我的用户名
 
-    private var myCodeCard: some View {
+    private var myUsernameCard: some View {
         VStack(spacing: 14) {
             HStack {
-                Text("我的邀请码")
+                Text("我的用户名")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
             }
 
-            QRCodeView(text: myCode)
+            QRCodeView(text: myUsername)
                 .padding(.top, 2)
                 .onTapGesture {
                     copyCode()
                 }
 
-            // 等宽字体：邀请码是要一个字符一个字符核对的，
+            // 等宽字体：用户名是要一个字符一个字符核对的，
             // 用比例字体的话 8 和 B、0 和 O 看起来太像
-            Text(myCode)
-                .font(.system(size: 26, weight: .bold, design: .monospaced))
+            Text("@" + myUsername)
+                .font(.system(size: 24, weight: .bold, design: .monospaced))
                 .foregroundStyle(Theme.textPrimary)
-                .tracking(2)
                 .onTapGesture { copyCode() }
 
             if copied {
@@ -117,11 +116,11 @@ struct AddFriendView: View {
     }
 
     private var shareText: String {
-        "我在用 Huami Message 聊天，加我：邀请码 \(myCode)"
+        "我在用 Huami Message 聊天，加我：@\(myUsername)"
     }
 
     private func copyCode() {
-        UIPasteboard.general.string = myCode
+        UIPasteboard.general.string = myUsername
         Haptics.success()
         withAnimation(.snappy(duration: 0.2)) { copied = true }
         Task {
@@ -138,14 +137,14 @@ struct AddFriendView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
 
-            Text("输入对方的 8 位邀请码")
+            Text("输入对方的用户名")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textTertiary)
 
             HStack(spacing: 8) {
-                TextField("ABCD1234", text: $inputCode)
+                TextField("对方的用户名", text: $inputCode)
                     .font(.system(size: 17, weight: .medium, design: .monospaced))
-                    .textInputAutocapitalization(.characters)
+                    .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .focused($inputFocused)
                     .submitLabel(.go)
@@ -219,7 +218,7 @@ struct AddFriendView: View {
 
         Task {
             do {
-                try await store.addFriend(inviteCode: inputCode)
+                try await store.addFriend(username: inputCode)
                 // 加成功之后立刻能看出加的是谁 —— 只显示"成功"两个字的提示是没有用的
                 let name = store.conversations.first { $0.friend.id == friendIDForInput }?.friend.name
                 withAnimation(.snappy(duration: 0.25)) {

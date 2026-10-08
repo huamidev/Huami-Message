@@ -276,7 +276,7 @@ struct RootView: View {
 
             // 开发自检：自动加一个好友
             if !DevFlags.addFriendCode.isEmpty {
-                try? await store.addFriend(inviteCode: DevFlags.addFriendCode)
+                try? await store.addFriend(username: DevFlags.addFriendCode)
             }
             // 开发自检：发一张自己画的测试图，验证压缩→上传→显示这条链路
             if DevFlags.sendTestImage, let first = store.conversations.first {

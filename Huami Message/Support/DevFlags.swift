@@ -150,7 +150,7 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "openAddFriend")
     }
 
-    /// 启动时自动用这个邀请码加一个好友（用来验证加好友流程）
+    /// 启动时自动用这个用户名加一个好友（用来验证加好友流程）
     static var addFriendCode: String {
         UserDefaults.standard.string(forKey: "addFriendCode") ?? ""
     }
