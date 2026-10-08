@@ -276,6 +276,10 @@ struct ChatView: View {
         // 只有浮在上面的那几个元素（返回、名字胶囊、菜单）。
         // 消息从它们底下穿过去 —— 这才是一个整体的对话界面。
         .toolbarBackground(.hidden, for: .navigationBar)
+        // iOS 18 起这个修饰符改名了；两个都写，哪个生效都行。
+        // （老的那个在 iOS 26 上对某些样式不完全生效 —— 用户截图里
+        //   顶上仍有一条比背景略亮的横带，就是它。）
+        .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
         // 进聊天页就**把底栏藏起来**（微信、Telegram 都是这样）。
         //
         // 【为什么要专门写这一行】
@@ -305,8 +309,13 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 6)
-                .background(.regularMaterial, in: Capsule())
-                .overlay { Capsule().strokeBorder(Theme.separator, lineWidth: 0.5) }
+                // 名字**不加底** —— 直接浮在对话上面。
+                //
+                // 原来这里套了一层 .regularMaterial（毛玻璃胶囊），
+                // 用户的原话是"顶栏也不要半透明，直接透明"。
+                //
+                // 去掉之后名字是"飘在消息上"的 —— 也正是 Telegram 的样子：
+                // 消息从它两边/下面滚过去，而不是被一条横带切开。
             }
 
             ToolbarItem(placement: .topBarTrailing) { manageMenu }
