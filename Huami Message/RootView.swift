@@ -255,6 +255,19 @@ struct RootView: View {
             if !DevFlags.addFriendCode.isEmpty {
                 try? await store.addFriend(inviteCode: DevFlags.addFriendCode)
             }
+            // 开发自检：假装收到一条好友消息（触发自动分析）
+            //
+            // ⚠️ 必须放在"加好友"**之后** ——
+            // 我第一版放在前面，那一刻会话列表还是空的，
+            // 整个判断被跳过，界面上什么都没发生（而日志里那条 AI 请求
+            // 其实是自检的探针，看起来像成功了，很容易被骗过去）。
+            if !DevFlags.incomingText.isEmpty, let first = store.conversations.first {
+                try? await Task.sleep(for: .seconds(1))
+                store.receive(Message(friendID: first.friend.id,
+                                      text: DevFlags.incomingText,
+                                      sender: .friend))
+            }
+
             // 开发自检：往第一个会话发一条消息
             if !DevFlags.sendText.isEmpty, let first = store.conversations.first {
                 await store.send(DevFlags.sendText, to: first.friend.id)

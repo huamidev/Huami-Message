@@ -119,6 +119,12 @@ enum DevFlags {
         UserDefaults.standard.string(forKey: "saveBio") ?? ""
     }
 
+    /// 启动后假装收到一条好友消息（验证"自动分析"那条链路）。
+    /// 假服务器没有实时推送，收不到真消息，只能这样造。
+    static var incomingText: String {
+        UserDefaults.standard.string(forKey: "incomingText") ?? ""
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

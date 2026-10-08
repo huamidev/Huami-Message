@@ -368,7 +368,11 @@ final class ChatStore {
         }
     }
 
-    private func receive(_ message: Message) {
+    /// 收到一条好友消息。
+    ///
+    /// 不是 private 是因为开发自检要用它假造一条进来的消息
+    ///（假服务器没有实时推送，没法真的收）。
+    func receive(_ message: Message) {
         // ① 已经被拉黑的人，消息直接丢掉 —— 不进数据库，也不进界面。
         //    这才是"拉黑"真正起作用的地方：只把列表里的会话藏起来是不够的。
         if isBlocked(message.friendID) { return }

@@ -21,25 +21,49 @@ struct ChatView: View {
     @State private var showReportSheet = false
     @State private var showClearConfirm = false
 
-    /// 小助手在聊天记录里的判断。
+    /// 每条消息对应的判断结果。key 是那条消息的 id。
     ///
-    /// 【为什么不做成弹窗，而是插进对话流里】
+    /// 【为什么不再是一份全局的结果】
     ///
-    /// 因为它判断的是「上面那段对话」。放在弹窗里，用户得记住刚才说了什么；
-    /// 插在对话下面，它就在该在的位置上 —— 原文和判断永远在同一屏之内。
+    /// 因为要的效果是「判断贴在它读的那条消息下面」。全局一份的话，
+    /// 用户往上翻历史时那些卡片就不知道属于哪句话了。
     ///
-    /// 而且它不落库：这是对**此刻**的判断，不是一条消息。
+    /// 不落库：这是对**此刻**的判断，不是一条消息。
     /// 换个说法，它是"读"这段对话，不是"参与"这段对话。
-    @State private var assistantIntent: AssistantIntent?
-    @State private var assistantStatus: String?
-    @State private var assistantBlocks: [DecisionBlock] = []
-    @State private var assistantRecommendation: String?
-    @State private var assistantSharedCount = 0
+    @State private var analyses: [Message.ID: Analysis] = [:]
+
+    /// 正在判断哪条消息
+    @State private var analyzingMessageID: Message.ID?
+
     @State private var assistantTask: Task<Void, Never>?
 
-    /// 小助手失败时要说的话。
-    /// 空着的时候界面什么都不显示 —— 失败和"还在算"必须能区分开。
-    @State private var assistantError: String?
+    /// **是否自动分析对方的消息。**
+    ///
+    /// 【这是整个 App 里最需要想清楚的一个开关】
+    ///
+    /// 打开时：对方每发来一条消息，App 会**自动**把最近 10 条发给 AI ——
+    /// 也就是说，**你朋友的消息会在你没有点任何东西的情况下被发出去**，
+    /// 而你的朋友从来没有同意过这件事。
+    ///
+    /// 所以我做了三层控制，而不是简单地"默认开"：
+    ///   1. 只分析**你正在看的这个对话**，别的聊天一条都不发
+    ///   2. 防抖：对方连发几条时，等他停下来再分析一次（省钱，也更准）
+    ///   3. 这里随时能关，关掉之后只有手动点「分析这段对话」才会发送
+    ///
+    /// 而且隐私说明里**如实写了**这件事 —— 承诺和行为必须一致，
+    /// 上一轮刚修过一次"说明和行为对不上"的问题。
+    @AppStorage("autoAnalyzeIncoming") private var autoAnalyze = true
+
+    /// 一次判断的完整结果
+    struct Analysis: Equatable {
+        var status: String?
+        var blocks: [DecisionBlock] = []
+        var recommendation: String?
+        var error: String?
+        var sharedCount: Int = 0
+
+        var isDone: Bool { recommendation != nil || error != nil }
+    }
 
     /// 滚动用的锚点。它不是给用户看的，只是给代码一个「滚到这里」的坐标。
     private let bottomAnchor = "bottom"
@@ -110,17 +134,9 @@ struct ChatView: View {
                             .padding(.horizontal, 18)
                         }
 
-                        // ── 小助手的入口 ──
-                        // 常驻在这里，不做"打字时隐藏"。
-                        //
-                        // 我试过在输入框有字时把它收起来（理由是"你已经在打字了，
-                        // 说明你知道要说什么"），但那样会让面板高度忽高忽低，
-                        // 列表位置跟着跳 —— 为了省 80 磅换来一次跳动，不划算。
-                        //
-                        // 常驻还有一个好处：它的存在本身就在提醒用户
-                        // "这里有个东西能帮你"。
-                        assistantQuickBox
-                            .padding(.horizontal, 12)
+                        // 小助手的入口**不在这里**了。
+                        // 它的结果现在贴在每条消息下面（见 messageList 里那段），
+                        // 手动触发放在右上角的菜单里。输入框上方不再摆东西。
 
                         ChatInputBar(
                             text: $draft,
@@ -230,7 +246,7 @@ struct ChatView: View {
             }
 
             if DevFlags.openAssistant {
-                runAssistant(.reply)
+                analyzeLatest()
             }
 
             // 危险操作的自检：删除整个会话。
@@ -267,6 +283,26 @@ struct ChatView: View {
 
     private var manageMenu: some View {
         Menu {
+            Button {
+                Haptics.tap()
+                analyzeLatest()
+            } label: {
+                Label("分析这段对话", systemImage: "sparkles")
+            }
+
+            // 这个开关放在菜单里而不是设置里，是刻意的：
+            // 用户看到"AI 自动读了对方的消息"时，最想知道的就是**怎么关掉它**，
+            // 而那一刻他正在这个页面上。
+            Toggle(isOn: $autoAnalyze) {
+                Label("自动分析对方的消息", systemImage: "wand.and.stars")
+            }
+
+            if autoAnalyze {
+                Text("打开时，对方每发来一条消息都会把最近 10 条发给 AI 服务商")
+            }
+
+            Divider()
+
             Button {
                 // 拉黑是"重"动作，用警告震动，和轻点的发送明确区分开
                 Haptics.warning()
@@ -323,23 +359,10 @@ struct ChatView: View {
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 
-    // MARK: - 小助手的入口
+    // MARK: - 小助手
 
-    /// 小助手的入口：一个**小方块，里面直接摆几个具体问题**。
-    ///
-    /// 【为什么不做成"一个图标按钮，点开再选"】
-    ///
-    /// 想找小助手的人，心里其实已经有一个具体问题了：
-    /// "他这话到底什么意思"、"我该怎么回"、"帮我起个头"。
-    /// 与其让他点开一个面板、再打字描述需求，不如把问题直接摆在面前 ——
-    /// **少一步，而且不用组织语言**。
-    ///
-    /// 上面那行小字一直在，用户点之前就知道会发生什么 —— 这是知情同意的前提。
-    /// 开始（或重新开始）一次判断。
-    ///
-    /// 再点一次别的选项就是**重新判断**，而不是排队等两个结果 ——
-    /// 所以先把上一次的任务取消掉。
-    private func runAssistant(_ intent: AssistantIntent) {
+    /// 开始一次判断，结果**贴在指定的那条消息下面**。
+    private func runAssistant(_ intent: AssistantIntent, attachTo messageID: Message.ID) {
         assistantTask?.cancel()
         Haptics.tap()
 
@@ -348,15 +371,12 @@ struct ChatView: View {
             friendName: conversation.friend.name
         )
 
-        // 这次到底发了多少条，如实记下来显示给用户 ——
-        // 隐私承诺不能只是写在政策里，得在用户眼前成立
+        // 这次到底发了多少条，如实显示给用户 ——
+        // 隐私承诺不能只写在政策里，得在用户眼前成立
         withAnimation(.snappy(duration: 0.25)) {
-            assistantIntent = intent
-            assistantStatus = "正在读这段对话"
-            assistantBlocks = []
-            assistantRecommendation = nil
-            assistantError = nil
-            assistantSharedCount = context.messages.count
+            analyses[messageID] = Analysis(status: "正在读这段对话",
+                                           sharedCount: context.messages.count)
+            analyzingMessageID = messageID
         }
 
         assistantTask = Task {
@@ -366,100 +386,68 @@ struct ChatView: View {
                     if Task.isCancelled { return }
                     switch event {
                     case .status(let text):
-                        assistantStatus = text
+                        analyses[messageID]?.status = text
 
                     case .block(let block):
                         withAnimation(.snappy(duration: 0.3)) {
-                            assistantBlocks.append(block)
+                            analyses[messageID]?.blocks.append(block)
                         }
 
                     case .recommendation(let text):
                         withAnimation(.snappy(duration: 0.3)) {
-                            assistantRecommendation = text
+                            analyses[messageID]?.recommendation = text
+                            analyses[messageID]?.status = nil
                         }
                     }
                 }
             } catch {
                 if Task.isCancelled { return }
-                // 失败必须说出来。真网络一定会出问题（断网、超时、AI 额度用完），
+                // 失败必须说出来。真网络一定会出问题，
                 // 只留一个永远转不完的"正在想…"是最让人火大的。
                 withAnimation(.snappy(duration: 0.3)) {
-                    assistantStatus = nil
-                    assistantError = (error as? LocalizedError)?.errorDescription
+                    analyses[messageID]?.status = nil
+                    analyses[messageID]?.error = (error as? LocalizedError)?.errorDescription
                         ?? "小助手这次没成功，等一下再试。"
                 }
                 Haptics.warning()
                 return
             }
             guard !Task.isCancelled else { return }
-            assistantStatus = nil
+            analyses[messageID]?.status = nil
+            analyzingMessageID = nil
             Haptics.success()
         }
     }
 
-    /// 收起判断结果，回到干净的聊天界面
-    private func clearAssistant() {
-        assistantTask?.cancel()
-        assistantTask = nil
-        withAnimation(.snappy(duration: 0.25)) {
-            assistantIntent = nil
-            assistantStatus = nil
-            assistantBlocks = []
-            assistantRecommendation = nil
-            assistantError = nil
-            assistantSharedCount = 0
+    /// 对方发来新消息时，自动分析一次。
+    ///
+    /// 【为什么要防抖】
+    ///
+    /// 对方常常连着发好几条（「在吗」「那个事」「你怎么不说话」）。
+    /// 每条都分析的话：又费钱、又会在界面上刷出一堆卡片。
+    /// **等他停下来一秒多再分析**，既省又好读。
+    private func autoAnalyzeIfNeeded() {
+        guard autoAnalyze else { return }
+        guard let last = messages.last, last.sender == .friend else { return }
+        guard analyses[last.id] == nil else { return }   // 分析过就不重复
+
+        let target = last.id
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+
+            // 等完之后如果又来了新消息，交给新的一次去处理
+            guard messages.last?.id == target else { return }
+            guard autoAnalyze else { return }
+            guard analyses[target] == nil else { return }
+
+            runAssistant(.reply, attachTo: target)
         }
     }
 
-    private var assistantQuickBox: some View {
-        VStack(alignment: .leading, spacing: 7) {
-
-            HStack(spacing: 4) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-                Text("小助手 · 点选项会把最近 \(AssistantContext.recentLimit) 条消息发给 AI")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.textTertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.9)
-                Spacer(minLength: 0)
-
-                // 有判断结果显示时，给一个收起的出口。
-                // 没有出口的话，那段内容会一直占着聊天记录，用户只能靠退出重进。
-                if assistantIntent != nil {
-                    Button {
-                        Haptics.tap()
-                        clearAssistant()
-                    } label: {
-                        Text("收起")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Theme.accent)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            HStack(spacing: 7) {
-                ForEach(AssistantIntent.allCases) { intent in
-                    Button {
-                        runAssistant(intent)
-                    } label: {
-                        Text(intent.title)
-                            .font(.system(size: 12.5, weight: .medium))
-                            .foregroundStyle(Theme.accent)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .background(Theme.accentSoft, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(10)
-        .card(radius: 16)
+    /// 手动分析最后一条消息（菜单里的「分析这段对话」）
+    private func analyzeLatest() {
+        guard let last = messages.last else { return }
+        runAssistant(.reply, attachTo: last.id)
     }
 
     // MARK: - 消息列表
@@ -478,30 +466,32 @@ struct ChatView: View {
                             .id(item.id)
 
                     case .message(let message):
-                        MessageBubble(
-                            message: message,
-                            onRetry: { Task { await store.retry(message) } },
-                            onDelete: {
-                                Haptics.warning()
-                                withAnimation(.snappy) { store.deleteMessage(message) }
+                        VStack(alignment: .leading, spacing: 8) {
+                            MessageBubble(
+                                message: message,
+                                onRetry: { Task { await store.retry(message) } },
+                                onDelete: {
+                                    Haptics.warning()
+                                    withAnimation(.snappy) { store.deleteMessage(message) }
+                                }
+                            )
+
+                            // 判断贴在**它读的那条消息**下面 ——
+                            // 这样往上翻历史时，每张卡片都还知道自己说的是哪句话。
+                            if let analysis = analyses[message.id] {
+                                DecisionCardsView(
+                                    status: analysis.status,
+                                    blocks: analysis.blocks,
+                                    recommendation: analysis.recommendation,
+                                    error: analysis.error,
+                                    sharedMessageCount: analysis.sharedCount
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
                             }
-                        )
+                        }
                         .id(item.id)
                     }
-                }
-
-                // 小助手的判断插在最后一条消息下面。
-                // 它判断的就是"上面这段对话"，所以放在这里位置最对。
-                if assistantIntent != nil {
-                    DecisionCardsView(
-                        status: assistantStatus,
-                        blocks: assistantBlocks,
-                        recommendation: assistantRecommendation,
-                        error: assistantError,
-                        sharedMessageCount: assistantSharedCount
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.top, 2)
                 }
 
                 // 一个看不见的锚点。滚到它 = 滚到最底部。
@@ -553,6 +543,9 @@ struct ChatView: View {
             if nearBottom { unseenCount = 0 }
         }
         .onChange(of: messages.count) { oldCount, newCount in
+            // 对方来了新消息 → 自动分析一次（内部会判断开关和防抖）
+            autoAnalyzeIfNeeded()
+
             if isNearBottom {
                 withAnimation(.snappy(duration: 0.32)) {
                     proxy.scrollTo(bottomAnchor, anchor: .bottom)
@@ -564,7 +557,10 @@ struct ChatView: View {
         }
         // 小助手每冒出一个方块，就往下滚一点让它露出来。
         // 不滚的话方块会长在屏幕外面，用户以为它卡住了。
-        .onChange(of: assistantBlocks.count) { _, _ in
+        // 卡片一个个冒出来时跟着往下滚一点。
+        // 用"所有已分析消息的方块总数"当信号 —— 比盯某一条更稳，
+        // 因为分析可能挂在任意一条消息上。
+        .onChange(of: analyses.values.reduce(0) { $0 + $1.blocks.count }) { _, _ in
             withAnimation(.snappy(duration: 0.3)) {
                 proxy.scrollTo(bottomAnchor, anchor: .bottom)
             }
