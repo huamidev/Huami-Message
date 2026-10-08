@@ -1,20 +1,19 @@
 import Foundation
 
-/// 假数据版的聊天服务 —— 第 0 步专用。
+/// 假数据版的聊天服务 —— 接真服务器之前都用它。
 ///
 /// 它的作用：让你在**完全不用注册账号、不用连网**的情况下，
 /// 先把界面和手感做到位。等界面满意了，我们再写 SupabaseChatService 把它换掉。
 ///
 /// 这里故意加了 160 毫秒的延迟，是为了模拟真实网络，
 /// 让我们提前看到「等服务器」时的界面表现 —— 真机上这一步是必然会有的。
-/// 如果现在不把「等待」这件事设计好，接了真后端就会到处卡顿。
+/// 如果现在不把「等待」和「失败」这两件事设计好，接了真后端就会到处卡顿、到处丢消息。
 final class MockChatService: ChatService {
 
-    // MARK: - 内部状态（全部在内存里，App 杀掉重开就回到初始样子）
+    // MARK: - 内部状态（全部在内存里）
 
     private var friends: [Friend] = []
     private var messages: [Friend.ID: [Message]] = [:]
-    private var unread: [Friend.ID: Int] = [:]
 
     /// 用来把新消息「推」给界面
     private var continuation: AsyncStream<Message>.Continuation?
@@ -42,10 +41,9 @@ final class MockChatService: ChatService {
                 friend: friend,
                 lastMessage: last?.text ?? "",
                 lastTime: last?.sentAt ?? .distantPast,
-                unreadCount: unread[friend.id] ?? 0
+                unreadCount: 0
             )
         }
-        // 最近说话的排最前面
         return list.sorted { $0.lastTime > $1.lastTime }
     }
 
@@ -56,11 +54,20 @@ final class MockChatService: ChatService {
 
     func send(_ message: Message) async throws -> Message {
         try await Task.sleep(for: latency)
-        messages[message.friendID, default: []].append(message)
+
+        // 调试开关：强制失败，用来验证「发送失败 + 重试」的界面。
+        if DevFlags.failSend {
+            throw MockChatError.sendFailed
+        }
+
+        // 真后端在这里会返回"服务器确认后的那条消息"，并且在服务器上把它记为已送达。
+        // 所以假服务也把**确认后的版本**存进自己的列表 ——
+        // 存的如果还是"发送中"的版本，下次后台同步就会拿它去覆盖本地，把状态冲掉。
+        var confirmed = message
+        confirmed.status = .sent
+        messages[message.friendID, default: []].append(confirmed)
         scheduleAutoReply(to: message.friendID)
-        // 假服务：原样返回（id 和时间都不变，这样界面上不会闪一下）。
-        // 真后端会返回服务器生成的时间和编号，处理方式一样。
-        return message
+        return confirmed
     }
 
     func incomingMessages() -> AsyncStream<Message> {
@@ -81,7 +88,13 @@ final class MockChatService: ChatService {
 
         Task {
             try? await Task.sleep(for: .seconds(2.5))
-            let reply = Message(friendID: friendID, text: text, sender: .friend)
+            // 自动回复也要用固定的 id，否则每次重启都会在数据库里多出一条重复的
+            let reply = Message(
+                id: Self.replyID(friendID: friendID, index: cursor),
+                friendID: friendID,
+                text: text,
+                sender: .friend
+            )
             messages[friendID, default: []].append(reply)
             continuation?.yield(reply)
         }
@@ -92,13 +105,45 @@ final class MockChatService: ChatService {
     /// 好友的自动回复台词库，每个好友性格不同
     private static var replyPool: [Friend.ID: [String]] = [:]
 
+    // MARK: 稳定的 id（很重要，别改回随机 UUID）
+
+    /// ⚠️ 这里必须是**固定不变**的 id，不能用 UUID() 每次随机生成。
+    ///
+    /// 原因：现在消息会真的存进本地数据库。
+    /// 如果每次启动假数据的 id 都变，数据库里就会不停地**新增重复的消息** ——
+    /// 开三次 App 就有三份「在吗」。
+    ///
+    /// 这个坑很隐蔽：单次运行完全正常，只有反复重启才会暴露出来。
+    /// 真服务器上每条消息的 id 也是由服务器生成的、永远不变，所以这样做反而更真实。
+    /// ⚠️ 格式核对：UUID 必须是 8-4-4-4-12 共 36 个字符。
+    ///    下面 format 里已经带了 "-0000-0000-0000-"，所以 prefix 只能给第一组 8 位。
+    ///    （我第一版把 prefix 写成 "11111111-1111"，多了一组，凑成 41 个字符，
+    ///      UUID(uuidString:) 返回 nil，强制解包直接崩溃。
+    ///      崩溃栈非常明确 —— 这就是"宁可崩得清清楚楚，也不要错得莫名其妙"。）
+    private static func id(_ prefix: String, _ n: Int) -> UUID {
+        UUID(uuidString: String(format: "\(prefix)-0000-0000-0000-%012d", n))!
+    }
+
+    private static func friendID(_ n: Int) -> UUID { id("11111111", n) }
+    private static func seedMessageID(_ n: Int) -> UUID { id("22222222", n) }
+
+    /// 自动回复的 id：同一个好友的第 n 句回复，永远是同一个 id
+    private static func replyID(friendID: UUID, index: Int) -> UUID {
+        // ⚠️ 绝对不能用 friendID.hashValue —— Swift 的哈希值每个进程都会重新随机，
+        //    那样每次启动算出来的 id 都不一样，"稳定"就无从谈起。
+        //    必须从 UUID 的字节里直接算，才是真正固定的。
+        let bytes = withUnsafeBytes(of: friendID.uuid) { Array($0) }
+        let stable = (Int(bytes[0]) << 8) | Int(bytes[1])
+        return UUID(uuidString: String(format: "33333333-3333-3333-%04d-%012d", stable % 10000, index))!
+    }
+
     /// 造一份像样的假数据。
     /// 数据故意做得「有故事」：林一那句是留给「军师」演示用的。
     private func seed() {
-        let linYi   = Friend(name: "林一", avatarSeed: 0)
-        let chenXu  = Friend(name: "陈叙", avatarSeed: 1)
-        let mom     = Friend(name: "妈妈", avatarSeed: 2)
-        let laoZhou = Friend(name: "老周", avatarSeed: 3)
+        let linYi   = Friend(id: Self.friendID(1), name: "林一", avatarSeed: 0)
+        let chenXu  = Friend(id: Self.friendID(2), name: "陈叙", avatarSeed: 1)
+        let mom     = Friend(id: Self.friendID(3), name: "妈妈", avatarSeed: 2)
+        let laoZhou = Friend(id: Self.friendID(4), name: "老周", avatarSeed: 3)
 
         friends = [linYi, chenXu, mom, laoZhou]
 
@@ -107,31 +152,30 @@ final class MockChatService: ChatService {
 
         // 林一：主要演示对象
         messages[linYi.id] = [
-            Message(friendID: linYi.id, text: "在吗", sender: .friend, sentAt: ago(600)),
-            Message(friendID: linYi.id, text: "在，怎么了", sender: .me, sentAt: ago(596)),
-            Message(friendID: linYi.id, text: "周五晚上的事，你来吗", sender: .friend, sentAt: ago(595)),
-            Message(friendID: linYi.id, text: "应该可以", sender: .me, sentAt: ago(590)),
-            Message(friendID: linYi.id, text: "你昨天怎么没来？大家都等你很久了", sender: .friend, sentAt: ago(12)),
+            Message(id: Self.seedMessageID(1), friendID: linYi.id, text: "在吗", sender: .friend, sentAt: ago(600)),
+            Message(id: Self.seedMessageID(2), friendID: linYi.id, text: "在，怎么了", sender: .me, sentAt: ago(596)),
+            Message(id: Self.seedMessageID(3), friendID: linYi.id, text: "周五晚上的事，你来吗", sender: .friend, sentAt: ago(595)),
+            Message(id: Self.seedMessageID(4), friendID: linYi.id, text: "应该可以", sender: .me, sentAt: ago(590)),
+            Message(id: Self.seedMessageID(5), friendID: linYi.id, text: "你昨天怎么没来？大家都等你很久了", sender: .friend, sentAt: ago(12)),
         ]
-        unread[linYi.id] = 2
 
         // 陈叙：同事，说话比较公事
         messages[chenXu.id] = [
-            Message(friendID: chenXu.id, text: "在忙吗", sender: .friend, sentAt: ago(150)),
-            Message(friendID: chenXu.id, text: "还好，怎么了", sender: .me, sentAt: ago(148)),
-            Message(friendID: chenXu.id, text: "方案我改好了，第二页那个数据麻烦你核一下", sender: .friend, sentAt: ago(90)),
+            Message(id: Self.seedMessageID(11), friendID: chenXu.id, text: "在忙吗", sender: .friend, sentAt: ago(150)),
+            Message(id: Self.seedMessageID(12), friendID: chenXu.id, text: "还好，怎么了", sender: .me, sentAt: ago(148)),
+            Message(id: Self.seedMessageID(13), friendID: chenXu.id, text: "方案我改好了，第二页那个数据麻烦你核一下", sender: .friend, sentAt: ago(90)),
         ]
 
         // 妈妈
         messages[mom.id] = [
-            Message(friendID: mom.id, text: "吃饭了吗", sender: .friend, sentAt: ago(1500)),
-            Message(friendID: mom.id, text: "吃了", sender: .me, sentAt: ago(1495)),
-            Message(friendID: mom.id, text: "降温了，记得加衣服", sender: .friend, sentAt: ago(1440)),
+            Message(id: Self.seedMessageID(21), friendID: mom.id, text: "吃饭了吗", sender: .friend, sentAt: ago(1500)),
+            Message(id: Self.seedMessageID(22), friendID: mom.id, text: "吃了", sender: .me, sentAt: ago(1495)),
+            Message(id: Self.seedMessageID(23), friendID: mom.id, text: "降温了，记得加衣服", sender: .friend, sentAt: ago(1440)),
         ]
 
         // 老周
         messages[laoZhou.id] = [
-            Message(friendID: laoZhou.id, text: "球局周日老地方，来不来", sender: .friend, sentAt: ago(2900)),
+            Message(id: Self.seedMessageID(31), friendID: laoZhou.id, text: "球局周日老地方，来不来", sender: .friend, sentAt: ago(2900)),
         ]
 
         Self.replyPool = [
@@ -141,4 +185,10 @@ final class MockChatService: ChatService {
             laoZhou.id: ["行，那我占位子了", "来吧，就差你了", "好嘞"],
         ]
     }
+}
+
+/// 假服务会抛出的错误。
+/// 真接上 Supabase 之后，这里会换成网络层的错误（超时、没网、服务器 500……）。
+enum MockChatError: Error {
+    case sendFailed
 }

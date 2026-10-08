@@ -1,11 +1,26 @@
 import SwiftUI
 
+// MARK: - 发送状态
+
+/// 一条消息的发送状态。
+///
+/// 为什么必须有这个东西：真实网络**一定会失败**（地铁里、电梯里、对方不在线）。
+/// 如果一条消息发出去就"看起来成功了"，用户会以为对方收到了 ——
+/// 这是聊天 App 里最让人恼火的一类 bug，也是"不丝滑"的根源之一。
+///
+/// 所以每条自己发的消息都要有一个明确的状态，并且**失败时能重试**。
+enum MessageStatus: String, Codable, Hashable {
+    case sending   // 发送中：本地已经显示了，正在往服务器送
+    case sent      // 已送达服务器
+    case failed    // 发送失败：界面上会出现一个可以点的重试按钮
+}
+
 // MARK: - 好友
 
 /// 一个真实好友。
 ///
 /// 注意这里存的是 avatarSeed（一个数字）而不是颜色。
-/// 原因：以后好友信息要从服务器来，颜色是存不进数据库的，但数字可以。
+/// 原因：好友信息要从数据库和服务器来，颜色是存不进去的，但数字可以。
 /// 头像颜色由这个数字在界面上现算出来。
 struct Friend: Identifiable, Hashable {
     let id: UUID
@@ -52,13 +67,17 @@ struct Message: Identifiable, Hashable {
     /// 既是产品伦理，也是上架审核会看的东西。
     var polishedWith: PolishStyle?
 
+    /// 发送状态。好友发来的消息永远是 .sent，不用管这个字段。
+    var status: MessageStatus
+
     init(
         id: UUID = UUID(),
         friendID: Friend.ID,
         text: String,
         sender: Sender,
         sentAt: Date = .now,
-        polishedWith: PolishStyle? = nil
+        polishedWith: PolishStyle? = nil,
+        status: MessageStatus = .sent
     ) {
         self.id = id
         self.friendID = friendID
@@ -66,6 +85,7 @@ struct Message: Identifiable, Hashable {
         self.sender = sender
         self.sentAt = sentAt
         self.polishedWith = polishedWith
+        self.status = status
     }
 }
 
@@ -76,23 +96,32 @@ struct Message: Identifiable, Hashable {
 /// 它自己不存消息，只存「最后一条的摘要」。真正的消息在
 /// ChatStore.messagesByFriend 里按好友分开存。
 struct Conversation: Identifiable, Hashable {
-    let id: UUID
+
+    /// 会话的 id 就是好友的 id（因为第一版只有一对一）。
+    /// 写成计算属性而不是存一个字段，是为了从根上避免
+    /// 「同一个会话有两个不同的 id」这种难查的 bug。
+    var id: Friend.ID { friend.id }
+
     var friend: Friend
     var lastMessage: String
     var lastTime: Date
     var unreadCount: Int
 
     init(
-        id: UUID = UUID(),
         friend: Friend,
         lastMessage: String,
         lastTime: Date,
         unreadCount: Int = 0
     ) {
-        self.id = id
         self.friend = friend
         self.lastMessage = lastMessage
         self.lastTime = lastTime
         self.unreadCount = unreadCount
     }
+
+    // 只按 id 判断是不是同一个会话。
+    // 否则「最后一条消息变了」会被当成「换了一个会话」，
+    // 界面上可能出现列表跳动、导航栈错乱之类的问题。
+    static func == (lhs: Conversation, rhs: Conversation) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

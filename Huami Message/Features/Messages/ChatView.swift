@@ -75,14 +75,24 @@ struct ChatView: View {
         .onAppear {
             store.markRead(conversation.friend.id)
         }
-        // 开发用：带 -openPolish 1 启动时，自动填一句示例并打开润色面板，
-        // 方便看润色交互和流式输出。正常启动不会触发。
+        // 开发用：
+        //   -openPolish 1  自动填一句示例并打开润色面板
+        //   -autoSend 1    自动发一条消息（配合 -failSend 1 可以验证失败和重试）
+        // 正常启动都不会触发。
         .task {
-            guard DevFlags.openPolish, draft.isEmpty else { return }
-            // 用同一个常量同时喂给输入框和面板，避免"读回来的值不一样"
-            let demo = "你昨天怎么没来？大家都等你很久了，你这样不太好吧。"
-            draft = demo
-            polishRequest = PolishRequest(original: demo)
+            if DevFlags.openPolish, draft.isEmpty {
+                // 用同一个常量同时喂给输入框和面板，避免"读回来的值不一样"
+                let demo = "你昨天怎么没来？大家都等你很久了，你这样不太好吧。"
+                draft = demo
+                polishRequest = PolishRequest(original: demo)
+            }
+
+            if DevFlags.autoSend {
+                // 带上时间戳，这样重启后能一眼认出"这条是上一次发的"，
+                // 用来验证消息真的存进了本地数据库。
+                let stamp = Date().formatted(date: .omitted, time: .standard)
+                await store.send("自动测试消息 \(stamp)", to: conversation.friend.id)
+            }
         }
     }
 
@@ -93,8 +103,11 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(messages) { message in
-                        MessageBubble(message: message)
-                            .id(message.id)
+                        MessageBubble(message: message) {
+                            // 点"重试"：把这条重新送出去
+                            Task { await store.retry(message) }
+                        }
+                        .id(message.id)
                     }
 
                     // 一个看不见的锚点。滚到它 = 滚到最底部。

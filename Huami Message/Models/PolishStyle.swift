@@ -10,7 +10,9 @@ import SwiftUI
 /// 这三种正好覆盖日常社交里最常见的三种「说不出口」。
 ///
 /// 想改风格？只改这个文件，界面会自动跟着变（因为界面是遍历 allCases 画的）。
-enum PolishStyle: String, CaseIterable, Identifiable {
+///
+/// 加了 Codable，是为了能直接存进数据库（SwiftData 需要它）。
+enum PolishStyle: String, CaseIterable, Identifiable, Codable {
     case tactful   // 得体
     case concise   // 简短
     case warm      // 温度

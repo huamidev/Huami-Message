@@ -15,6 +15,13 @@ import SwiftUI
 ///    产品定位应该能被第一眼看到，而不是藏在某个二级菜单里。
 struct RootView: View {
 
+    /// 数据管家由外部注入（在 Huami_MessageApp 里创建）。
+    ///
+    /// 为什么用"注入"而不是在这里自己 new 一个？
+    /// 因为它依赖本地数据库，而"数据库怎么建"是 App 启动该管的事。
+    /// 让每个页面自己造数据库，迟早会出现"两个页面看的数据不一样"的怪问题。
+    let store: ChatStore
+
     enum Tab { case messages, advisor, profile }
 
     @State private var selection: Tab = RootView.initialTab
@@ -30,14 +37,9 @@ struct RootView: View {
         }
     }
 
-    /// 全局只有一份数据管家，三个页面共用同一份数据。
-    /// 放在这里而不是每个页面各建一份，是为了保证
-    /// 「军师页看到的」和「消息页看到的」永远是同一份数据。
-    @State private var store = ChatStore()
-
     var body: some View {
         // 注意：这里**没有**放 AuroraBackground()。
-        // 极光背景放在每个页面内部（见 GlassPage.swift 里的说明）——
+        // 极光背景放在每个页面内部（见 Design/GlassPage.swift 里的说明）——
         // 放在这里会被 TabView 自己的不透明背景盖住，变成一片死黑。
         TabView(selection: $selection) {
             ConversationListView()
@@ -68,8 +70,4 @@ struct RootView: View {
         .preferredColorScheme(.dark)
         .task { await store.start() }
     }
-}
-
-#Preview {
-    RootView()
 }

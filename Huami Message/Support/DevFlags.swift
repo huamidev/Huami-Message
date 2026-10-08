@@ -6,6 +6,7 @@ import Foundation
 ///
 ///     xcrun simctl launch booted com.huamidev.HuamiMessage -startTab advisor
 ///     xcrun simctl launch booted com.huamidev.HuamiMessage -openChat 1 -openPolish 1
+///     xcrun simctl launch booted com.huamidev.HuamiMessage -offline 1
 ///
 /// 原理：`-名字 值` 形式的启动参数会被系统自动读进 UserDefaults，
 /// 所以不用自己解析命令行，一行就读到了。
@@ -29,5 +30,26 @@ enum DevFlags {
     /// 进入会话后自动打开 AI 润色面板（方便看润色交互）
     static var openPolish: Bool {
         UserDefaults.standard.bool(forKey: "openPolish")
+    }
+
+    /// **完全离线**：跳过一切网络请求，只用本地数据库。
+    ///
+    /// 这个开关不是玩具，它是用来**证明**「打开 App 瞬间就能操作」的：
+    /// 打开它还能正常看到全部历史消息，就说明界面真的不依赖网络。
+    /// 接上真服务器之后，这个开关会变成排查问题的一把好手 ——
+    /// 能立刻分辨「是网络的问题」还是「是本地的问题」。
+    static var offline: Bool {
+        UserDefaults.standard.bool(forKey: "offline")
+    }
+
+    /// 进入会话后自动发一条消息（方便验证"发送 → 存库 → 重启还在"这条链路）
+    static var autoSend: Bool {
+        UserDefaults.standard.bool(forKey: "autoSend")
+    }
+
+    /// 让发送**必定失败**，用来验证「发送失败 + 重试」的界面。
+    /// 真网络里这种失败一定会发生，所以它必须有办法被主动测到。
+    static var failSend: Bool {
+        UserDefaults.standard.bool(forKey: "failSend")
     }
 }
