@@ -192,7 +192,7 @@ final class SupabaseChatService: ChatService {
         do {
             friendID = try await client.post(
                 "/rest/v1/rpc/add_friend_by_username",
-                body: UsernameBody(username: name),
+                body: UsernameBody(name: name),
                 as: UUID.self
             )
         } catch {
@@ -220,7 +220,17 @@ final class SupabaseChatService: ChatService {
         guard case SupabaseError.http(_, let message) = error else { return error }
         if message.contains("没有这个人") { return ChatError.usernameNotFound }
         if message.contains("不能加自己") { return ChatError.cannotAddSelf }
-        return error
+
+        // ⚠️ 认不出来就**把服务器的话原样端上去**，绝不吞成"请稍后再试"。
+        //
+        // 我这次就是被那句吞掉的：服务器明明说的是
+        // "Could not find the function public.add_friend_by_username(username)"
+        // —— 一眼就能看出是参数名不对。结果用户只看到「请稍后再试」，
+        // 我也只能靠猜，白绕了一大圈。
+        //
+        // 原则：**翻译不出来的时候，宁可显示难懂的原文，
+        // 也不要显示一句好听但没信息的话。**
+        return ChatError.unknown(message)
     }
 
     // ========================================================================
@@ -344,6 +354,14 @@ private struct TargetBody: Encodable {
     let target: String
 }
 
+/// 加好友时发给数据库函数的参数。
+///
+/// ⚠️ **键名必须和数据库函数的参数名一字不差。**
+///
+/// 数据库那边的签名是 `add_friend_by_username(name text)` —— 参数叫 `name`。
+/// 我原来这里写的是 `username`，于是 PostgREST 找不到匹配的函数，
+/// 回了一句「没有这个函数」，而它又被下面的错误翻译吞成了「请稍后再试」。
+/// 表现是"加好友全部失败"，查了半天才看到是这一行。
 private struct UsernameBody: Encodable {
-    let username: String
+    let name: String
 }

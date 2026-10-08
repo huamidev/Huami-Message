@@ -386,14 +386,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(201, None)
             return
 
-        # ── 用邀请码加好友（对应 schema.sql 里的数据库函数）──
-        if parsed.path == "/rest/v1/rpc/add_friend_by_invite":
+        # ── 用用户名加好友（对应数据库函数 add_friend_by_username）──
+        #
+        # ⚠️ 参数名必须是 name —— 和数据库函数的签名一字不差。
+        # （真 App 那边我写成 username，服务器就找不到这个函数，
+        #   客户端还把它翻成「请稍后再试」，白查了半天。）
+        if parsed.path == "/rest/v1/rpc/add_friend_by_username":
             me = self._me()
-            code = (body.get("code") or "").upper()
-            target = next((p for p in PROFILES.values() if p["invite_code"] == code), None)
+            name = (body.get("name") or "").strip().lower()
+            target = next((p for p in PROFILES.values() if p.get("username") == name), None)
             if target is None:
-                print(f"    → 400 邀请码 {code} 不存在")
-                self._send(400, {"message": "邀请码不存在"})
+                print(f"    → 400 用户名 {name} 不存在")
+                self._send(400, {"message": "没有这个人"})
                 return
             if target["id"] == me:
                 self._send(400, {"message": "不能加自己"})
@@ -405,6 +409,20 @@ class Handler(BaseHTTPRequestHandler):
                                         "blocked": False, "created_at": now_iso()})
             print(f"    → 200 加好友成功：{target['display_name']}")
             self._send(200, target["id"])
+            return
+
+        # ── 删除好友（双向）──
+        if parsed.path == "/rest/v1/rpc/remove_friend":
+            me = self._me()
+            target = body.get("target")
+            before = len(FRIENDSHIPS)
+            FRIENDSHIPS[:] = [
+                f for f in FRIENDSHIPS
+                if not ((f["user_id"] == me and f["friend_id"] == target)
+                        or (f["user_id"] == target and f["friend_id"] == me))
+            ]
+            print(f"    → 200 删除好友：少了 {before - len(FRIENDSHIPS)} 行")
+            self._send(200, True)
             return
 
         # ── AI 云函数（真实现是 Supabase Edge Function 里那个 ai-proxy）──
