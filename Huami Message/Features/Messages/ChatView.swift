@@ -9,7 +9,6 @@ struct ChatView: View {
     @Environment(ChatStore.self) private var store
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(ChromeState.self) private var chrome
 
     @State private var draft = ""
 
@@ -262,16 +261,7 @@ struct ChatView: View {
         //
         // ⚠️ 这个修饰符要写在**被推进去的那个页面**上，不要写在 TabView 上 ——
         // 写在 TabView 上会连根一起藏掉，返回之后也回不来。
-        // 系统那条栏在 RootView 里已经统一藏掉了；
-        // 这里负责把我们自己画的那条也收起来 —— 而且是**带动画**地收。
-        //
-        // 必须包在 withAnimation 里，否则转场还没开始，底栏就已经没了。
-        .onAppear {
-            withAnimation(.snappy(duration: 0.3)) { chrome.hidesTabBar = true }
-        }
-        .onDisappear {
-            withAnimation(.snappy(duration: 0.3)) { chrome.hidesTabBar = false }
-        }
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             // 名字装在**一个胶囊里**，浮在对话上面。
             //
