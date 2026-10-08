@@ -38,6 +38,7 @@ struct AssistantSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    introHeader
                     privacyCard
 
                     if !hasResult {
@@ -64,6 +65,32 @@ struct AssistantSheet: View {
         // 开发用：带 -assistantGo 1 时自动开始，省掉手动点击（为了截图/验证）
         .task {
             if DevFlags.assistantGo { start() }
+        }
+    }
+
+    // MARK: - 小助手的自我介绍
+
+    /// 面板顶部：形象 + 一句话说明它是干什么的。
+    ///
+    /// 为什么值得单独有一块：一个"有脸"的助手会比一个纯功能面板
+    /// 显得更像在跟你说话，用户也更愿意用它。
+    /// 这一块不承载任何功能，纯粹是让界面有个人味。
+    private var introHeader: some View {
+        HStack(spacing: 12) {
+            Image("AssistantAvatar")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 56, height: 56)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("我是小助手")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text("帮你看懂对方的意思，想好怎么回")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            Spacer()
         }
     }
 

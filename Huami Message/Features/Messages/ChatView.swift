@@ -243,9 +243,13 @@ struct ChatView: View {
                 )
             )
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
+            HStack(spacing: 4) {
+                // 用小助手的形象，而不是通用的 sparkles 图标 ——
+                // 它现在有"脸"了，用户一眼就认得出这是谁在跟他说话。
+                Image("AssistantAvatar")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
                 Text("小助手")
                     .font(.system(size: 12, weight: .medium))
             }

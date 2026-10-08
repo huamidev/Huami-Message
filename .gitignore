@@ -13,6 +13,8 @@ xcuserdata/
 # 临时截图 / 调试产物（看一眼就删，不进仓库）
 .look/
 .verify/
+.tmp/
+.icon/
 
 # Swift Package Manager
 .swiftpm/
