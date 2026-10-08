@@ -100,7 +100,26 @@ case "icon":
     // 角色按比例居中放置
     let side = Double(size) * pct / 100
     let inset = (Double(size) - side) / 2
+
+    // 第 8 个参数写 multiply 时，用"正片叠底"把角色画上去。
+    //
+    // 【为什么这是个好办法】
+    //
+    // 原图是"白底 + 手绘线条"。想去掉白底有两条路：
+    //   · 抠图（把白色变透明）→ 线条的笔触纹理会被破坏成斑点（试过，不行）
+    //   · 正片叠底 → 白色和底色相乘还是底色，黑色和底色相乘还是黑，
+    //     相当于**让白色"变成"了底色**，而线条一个像素都没动
+    //
+    // 数学上：结果 = 底色 × 原图 / 255
+    //   白(255) × 蓝 = 蓝      ← 背景自然消失
+    //   黑(0)   × 蓝 = 黑      ← 线条完整保留，抗锯齿也在
+    //
+    // 代价：线条之外的颜色会被"染"上底色（那根绿草会偏青）。
+    if a.count >= 8, a[7] == "multiply" {
+        ctx.setBlendMode(.multiply)
+    }
     ctx.draw(img, in: CGRect(x: inset, y: inset, width: side, height: side))
+    ctx.setBlendMode(.normal)
     write(ctx.makeImage()!, a[3])
     print("icon -> \(size)x\(size) 底色 #\(a[5]) 角色占比 \(pct)%")
 
@@ -144,6 +163,64 @@ case "key":
     write(result, a[3])
     print("key -> 白底已透明化 \(w)x\(h)")
 
+case "softkey":
+    // 把白底变透明 —— 但**用曲线压掉纸纹**，而不是线性放大。
+    //
+    // 【为什么要单独加一个命令，而不是改 key】
+    //
+    // 原来的 key 用的是  alpha = (1 - 最暗通道) * 增益，增益默认 1.6。
+    // 原图是手绘的，纸面上有大量接近白的纹理噪点。
+    // 乘 1.6 之后，这些噪点被提成了肉眼可见的灰斑 ——
+    // 线条看起来毛毛的、断断续续的，像被啃过。
+    //
+    // 这里改成先算"离白色有多远"，再取幂：
+    //     alpha = (1 - 最暗通道) ^ 指数
+    // 只有**真正深**的像素才接近不透明，浅色的纸纹被压到接近 0。
+    // 指数越大压得越干净（线条也会略细一点），默认 2。
+    guard a.count >= 4 else { print("softkey 参数错"); exit(1) }
+    let img = load(a[2])
+    let w = img.width, h = img.height
+    var buf = [UInt8](repeating: 0, count: w * h * 4)
+    guard let read = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8,
+                               bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                               bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+        print("读像素失败"); exit(1)
+    }
+    read.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+    let exponent = a.count >= 5 ? (Double(a[4]) ?? 1.6) : 1.6
+    for i in stride(from: 0, to: buf.count, by: 4) {
+        let darkest = Double(min(buf[i], min(buf[i + 1], buf[i + 2]))) / 255
+        let alpha = pow(1 - darkest, exponent)
+        if alpha <= 0.03 {
+            buf[i] = 0; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 0
+        } else {
+            // ⚠️ **必须把 RGB 也乘上 alpha** —— 这就是之前线条发毛的真正原因。
+            //
+            // 这个画布用的是 premultipliedLast（预乘 alpha）格式。
+            // 在这种格式里，存进去的 RGB 必须**已经乘过 alpha** ——
+            // 也就是说 RGB 的值不能大于 alpha。
+            //
+            // 只设 alpha、不乘 RGB 的话，系统会按"已经乘过"去解释它：
+            // 比如 alpha=0.5、RGB=128，会被当成"原始颜色 = 128/0.5 = 256"，
+            // 直接溢出。表现出来就是线条变成一团花斑、边缘发毛。
+            //
+            // 我一开始以为是"增益把纸纹放大了"，换了曲线还是不行；
+            // 真正的原因是这个。**看着像调参的问题，其实是编码格式用错了。**
+            let a8 = UInt8(alpha * 255)
+            buf[i] = UInt8(Double(buf[i]) * alpha)
+            buf[i + 1] = UInt8(Double(buf[i + 1]) * alpha)
+            buf[i + 2] = UInt8(Double(buf[i + 2]) * alpha)
+            buf[i + 3] = a8
+        }
+    }
+    guard let outCtx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8,
+                                 bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+          let result = outCtx.makeImage() else { print("生成失败"); exit(1) }
+    write(result, a[3])
+    print("softkey -> 已去白底（指数 \(exponent)，压制纸纹）")
+
 case "trim":
     // 自动裁到"有内容的地方"，四周留一点边距。
     //
@@ -161,13 +238,32 @@ case "trim":
     }
     ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
 
+    // 【怎么判断"哪里是内容"】
+    //
+    // 优先看 alpha 通道（那是"去白底"之后的结果）。
+    // 但如果整张图都是不透明的 —— 比如直接拿原图来裁 ——
+    // 就看"这个像素离白色有多远"，那才是画上去的线条。
+    //
+    // 没有这个回退的话，直接裁原图会把整张图当成内容，等于没裁。
+    var hasAlpha = false
+    for i in stride(from: 3, to: buf.count, by: 4) where buf[i] < 250 {
+        hasAlpha = true
+        break
+    }
+
     var minX = w, minY = h, maxX = 0, maxY = 0
     for y in 0..<h {
-        for x in 0..<w where buf[(y * w + x) * 4 + 3] > 12 {
-            if x < minX { minX = x }
-            if x > maxX { maxX = x }
-            if y < minY { minY = y }
-            if y > maxY { maxY = y }
+        for x in 0..<w {
+            let i = (y * w + x) * 4
+            let hit = hasAlpha
+                ? buf[i + 3] > 12
+                : (255 - min(buf[i], min(buf[i + 1], buf[i + 2]))) > 24
+            if hit {
+                if x < minX { minX = x }
+                if x > maxX { maxX = x }
+                if y < minY { minY = y }
+                if y > maxY { maxY = y }
+            }
         }
     }
     guard maxX > minX, maxY > minY else { print("整张图都是空的"); exit(1) }
