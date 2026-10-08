@@ -166,7 +166,9 @@ struct ProfileView: View {
             settingRow("举报与屏蔽", value: "待接入", enabled: false)
             divider
             Button {
-                Haptics.tap()
+                // 用 warning 而不是 tap：退出是个"有后果"的动作，
+                // 震动要能让人感觉到"刚才发生了一件事"。
+                Haptics.warning()
                 Task { await auth.signOut() }
             } label: {
                 HStack {

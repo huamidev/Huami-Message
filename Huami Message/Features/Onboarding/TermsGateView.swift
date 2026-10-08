@@ -54,10 +54,7 @@ struct TermsGateView: View {
 
     private var header: some View {
         VStack(spacing: 12) {
-            Image("AssistantAvatar")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 72, height: 72)
+            MascotAvatar(size: 72)
 
             Text("欢迎使用 Huami Message")
                 .font(.system(size: 20, weight: .semibold))

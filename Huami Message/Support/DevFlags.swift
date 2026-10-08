@@ -92,6 +92,12 @@ enum DevFlags {
         UserDefaults.standard.string(forKey: "confirmLink") ?? ""
     }
 
+    /// 启动后自动执行一次「退出登录」。
+    /// 用来验证"退出之后会不会回到登录页"——这个用截图点不了按钮。
+    static var devSignOut: Bool {
+        UserDefaults.standard.bool(forKey: "devSignOut")
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

@@ -77,10 +77,7 @@ struct AuthGateView: View {
 
     private var header: some View {
         VStack(spacing: 12) {
-            Image("AssistantAvatar")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 64, height: 64)
+            MascotAvatar(size: 64)
 
             Text(mode == .signIn ? "欢迎回来" : "创建账号")
                 .font(.system(size: 20, weight: .semibold))

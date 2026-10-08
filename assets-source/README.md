@@ -74,23 +74,23 @@ PNG 文件里带 alpha 通道，上传 App Store 就会被拒。
 
 ## 重新生成 App 里的小助手头像
 
-头像要**真透明**（它显示在 App 的浅色渐变背景上），所以这里必须抠图。
-但用修好之后的 `softkey`：
+**目前的决定：和 App 图标用完全相同的处理 —— 原图直接用，不抠图。**
+
+显示的时候在界面上裁成圆角方块（见 `Design/MascotAvatar.swift`），
+看起来就像一个小图标，而不是一张贴歪的透明贴纸。
 
 ```bash
-./.tmp/imgtool softkey assets-source/icon-original.webp ./.tmp/av.png 1.6
-./.tmp/imgtool trim    ./.tmp/av.png ./.tmp/av-trim.png 10
+./.tmp/imgtool icon assets-source/icon-original.webp ./.tmp/av.png 216 FFFFFF 100
 
 D="Huami Message/Assets.xcassets/AssistantAvatar.imageset"
-./.tmp/imgtool scale ./.tmp/av-trim.png "$D/avatar@3x.png" 192
-./.tmp/imgtool scale ./.tmp/av-trim.png "$D/avatar@2x.png" 128
-./.tmp/imgtool scale ./.tmp/av-trim.png "$D/avatar.png"     64
+./.tmp/imgtool scale ./.tmp/av.png "$D/avatar@3x.png" 216   # 基准 72 磅
+./.tmp/imgtool scale ./.tmp/av.png "$D/avatar@2x.png" 144
+./.tmp/imgtool scale ./.tmp/av.png "$D/avatar.png"     72
 ```
 
-> 头像上还能看到一点手绘纸纹 —— 那是**素材本身**的一部分，
-> 在 64 磅的实际显示尺寸下看不出来。
-
----
+> 为什么不再抠图：这个素材**天生不适合抠图**（线条带笔触纹理、
+> 纸面有接近白的噪点）。抠完线条会发毛、变斑点。
+> 详细原因和验证过程见上面"这个素材不能抠图"那一节。
 
 ## imgtool 命令速查
 

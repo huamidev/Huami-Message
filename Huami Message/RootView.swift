@@ -49,6 +49,18 @@ struct RootView: View {
     }
 
     var body: some View {
+        // ⚠️ **必须在 body 里真的读一次**这个条件。
+        //
+        // 我原来只在下面 Binding 的 get 闭包里读它，结果是：
+        // **点了「退出登录」，登录页不出现 —— 看起来像没反应。**
+        //
+        // 原因：SwiftUI 的依赖观察是靠"body 求值时读了哪些值"来建立的。
+        // 只在 get 闭包里读，这个依赖不一定建立得起来，
+        // 于是 isSignedIn 变了、body 却不重新求值，绑定也就不会更新。
+        //
+        // 在 body 里读一次之后，值一变整个 body 重新求值，绑定跟着更新。
+        let needsGate = !hasAcceptedTerms || !auth.isSignedIn
+
         // 注意：这里**没有**放 AppBackground()。
         // 背景放在每个页面内部（见 Design/AppPage.swift 里的说明）——
         // 放在这里会被 TabView 自己的不透明背景盖住，一点都看不见。
@@ -107,7 +119,8 @@ struct RootView: View {
         // 这一页**只能通过点「同意并继续」离开**，往下划关不掉。
         // 一个能滑走的同意页，等于没有同意。
         .fullScreenCover(isPresented: Binding(
-            get: { !hasAcceptedTerms || !auth.isSignedIn },
+            // 用上面在 body 里读到的那个值，而不是在这里重新算一遍
+            get: { needsGate },
             set: { _ in }
         )) {
             // 两道闸门，顺序不能反：
@@ -192,6 +205,12 @@ struct RootView: View {
             guard auth.isSignedIn else { return }
 
             await store.start()
+
+            // 开发自检：进主界面之后再退出登录，验证会不会回到登录页
+            if DevFlags.devSignOut {
+                try? await Task.sleep(for: .seconds(3))
+                await auth.signOut()
+            }
 
             // 开发自检：自动加一个好友
             if !DevFlags.addFriendCode.isEmpty {
