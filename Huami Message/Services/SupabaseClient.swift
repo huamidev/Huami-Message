@@ -108,6 +108,70 @@ final class SupabaseClient {
     /// 不然"打字机效果"就只能靠客户端假装，那是骗人的。
     ///
     /// `URLSession.bytes(for:)` 给的正是这种能力：一个可以逐行消费的字节流。
+    // MARK: - 存储（传图片、头像）
+
+    /// 两个存储空间的**名字**。
+    ///
+    /// 写死成常量而不是散在各处：名字在三个地方必须一致 ——
+    /// 这里的代码、Supabase 里建的 bucket、还有存储的权限规则。
+    /// 散着写早晚会有一处对不上，而那种 bug 报错很难懂
+    ///（只会说"没权限"，不会说"你 bucket 名字打错了"）。
+    enum Bucket {
+        static let chat = "chat-images"
+        static let avatar = "avatars"
+    }
+
+    /// 传一个文件上去。
+    ///
+    /// **路径的第一层必须是用户自己的 ID** ——
+    /// 存储的权限规则就是按这个判的：
+    ///     (storage.foldername(name))[1] = auth.uid()::text
+    /// 传歪了会直接被拒。
+    ///
+    /// 文件名用随机 UUID，不是原名。两个理由：
+    ///   · 公开 bucket 靠"网址猜不到"来保护，原名（比如 IMG_0001.jpg）太好猜
+    ///   · 同一个文件名重复上传会被覆盖
+    @discardableResult
+    func upload(_ data: Data,
+                bucket: String,
+                contentType: String,
+                fileExtension: String = "jpg") async throws -> URL {
+        guard let userID = currentUserID else {
+            throw SupabaseError.http(status: 401, message: "还没登录，传不了东西")
+        }
+
+        let path = "\(userID.uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(fileExtension)"
+        var request = URLRequest(url: config.endpoint("/storage/v1/object/\(bucket)/\(path)"))
+        request.httpMethod = "POST"
+        request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken ?? config.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        // 图片内容不会变，让浏览器/CDN 缓存一小时，省流量
+        request.setValue("3600", forHTTPHeaderField: "cache-control")
+        request.httpBody = data
+        request.timeoutInterval = 60
+
+        let responseData: Data
+        let response: URLResponse
+        do {
+            (responseData, response) = try await session.data(for: request)
+        } catch {
+            if (error as? URLError)?.code == .cancelled { throw SupabaseError.cancelled }
+            AppLog.error(.network, "上传 \(bucket) 网络失败：\(error.localizedDescription)")
+            throw SupabaseError.network
+        }
+
+        guard let http = response as? HTTPURLResponse else { throw SupabaseError.network }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = Self.extractMessage(from: responseData)
+            AppLog.error(.network, "上传 \(bucket) → \(http.statusCode)：\(message)")
+            throw SupabaseError.storage(http.statusCode, message)
+        }
+
+        AppLog.info(.network, "上传 \(bucket) 成功")
+        return config.endpoint("/storage/v1/object/public/\(bucket)/\(path)")
+    }
+
     /// 流式 POST。
     ///
     /// `headers` 是给调用方加自定义头用的 —— 目前只有一个用途：
@@ -284,6 +348,27 @@ final class SupabaseClient {
     ///
     /// 为什么要循环找好几个字段：Supabase 不同的接口用的字段名不一样 ——
     /// 登录接口用 `msg` / `error_description`，数据库接口用 `message` / `hint`。
+    /// 上传失败该说什么人话。
+    /// 单独拆出来，是为了让 `errorDescription` 里那个 switch 保持
+    /// "每个 case 一个表达式"（原因见那边注释）。
+    /// 用 fileprivate 而不是 private：Swift 里写在类型里的 private 是
+    /// **类型内**可见，跨类型（哪怕同一个文件）调用不了。
+    /// 报错是 "inaccessible due to 'private' protection level"，
+    /// 看起来像权限设计问题，其实只是作用域搞错了。
+    fileprivate static func storageMessage(_ status: Int, _ message: String) -> String {
+        if status == 401 || status == 403 {
+            return "没权限往这里传。可能是存储的权限规则还没建好（那句 SQL 跑了吗？）"
+                + "\n\n服务器原话：\(message)"
+        }
+        if message.contains("Bucket not found") {
+            return "找不到存储空间。检查 Supabase 里是不是建好了 chat-images 和 avatars 这两个。"
+        }
+        if message.localizedCaseInsensitiveContains("maximum allowed size") {
+            return "这张图太大了，超过了你设的单个文件上限。"
+        }
+        return "上传失败（\(status)）：\(message)"
+    }
+
     private static func extractMessage(from data: Data) -> String {
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             for key in ["msg", "message", "error_description", "error", "hint", "details"] {
@@ -308,6 +393,11 @@ enum SupabaseError: LocalizedError {
     case cancelled
     case network
     case http(status: Int, message: String)
+
+    /// 传文件失败。和 `http` 分开，是因为存储那边的报错
+    /// 长得完全不一样（比如「new row violates row-level security policy」
+    /// 或者「Bucket not found」），分开之后提示能写得更准。
+    case storage(Int, String)
     case encoding(String)
     case decoding(String)
 
@@ -326,6 +416,16 @@ enum SupabaseError: LocalizedError {
 
         case .decoding(let preview):
             "服务器返回了看不懂的内容。\n\n\(preview)"
+
+        case .storage(let status, let message):
+            // ⚠️ 这里**只能写一个表达式**，不能写 if + return。
+            //
+            // 上面整个 switch 是当"返回值"用的（每个 case 一个表达式）。
+            // 只要有一个 case 改成多语句 + 显式 return，
+            // Swift 就不再把它当表达式，然后报一句很难懂的
+            // "missing return in getter" —— 我这次就撞上了。
+            // 所以判断逻辑挪到下面的小函数里。
+            SupabaseClient.storageMessage(status, message)
 
         case .http(let status, let message):
             // 把常见的状态码翻成人话。
