@@ -77,6 +77,18 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "devWipe")
     }
 
+    /// 启动时自动建好并登录一个测试账号（省得每次截图都手打邮箱密码）。
+    ///
+    /// 注意：账号是假的（存在本机 UserDefaults 里），
+    /// 等接上 Supabase 之后这个开关就没用了 —— 到时候要真账号才能登录。
+    static var devSignIn: Bool {
+        UserDefaults.standard.bool(forKey: "devSignIn")
+    }
+
+    /// 开发用测试账号
+    static let devEmail = "test@huami.app"
+    static let devPassword = "huami1234"
+
     /// **完全离线**：跳过一切网络请求，只用本地数据库。
     ///
     /// 这个开关不是玩具，它是用来**证明**「打开 App 瞬间就能操作」的：

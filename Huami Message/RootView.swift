@@ -34,6 +34,10 @@ struct RootView: View {
     /// 用 AppStorage 存 —— 只问一次，之后不再打扰。
     @AppStorage("hasAcceptedLegalTerms") private var hasAcceptedTerms = false
 
+    /// 登录状态管家。
+    /// 它不依赖数据库，所以在这里直接建就行。
+    @State private var auth = AuthStore()
+
     /// 启动时默认停在哪个页面。
     /// 开发时可以用启动参数直接跳过去（见 Support/DevFlags.swift），
     /// 平时正常启动就是「消息」页，不受影响。
@@ -64,6 +68,7 @@ struct RootView: View {
         .tint(Theme.accent)
         // 把数据管家交给下面所有页面
         .environment(store)
+        .environment(auth)
         // 只做浅色一套配色。
         // 这是个刻意的取舍：一套配色能省掉将近一半的界面工作量，
         // 而且浅色更像 TIM 那种"办公软件"的感觉。
@@ -77,16 +82,50 @@ struct RootView: View {
         // Binding 的 set 写成空操作，配合 interactiveDismissDisabled：
         // 这一页**只能通过点「同意并继续」离开**，往下划关不掉。
         // 一个能滑走的同意页，等于没有同意。
-        .fullScreenCover(isPresented: Binding(get: { !hasAcceptedTerms }, set: { _ in })) {
-            TermsGateView {
-                withAnimation(.snappy) { hasAcceptedTerms = true }
+        .fullScreenCover(isPresented: Binding(
+            get: { !hasAcceptedTerms || !auth.isSignedIn },
+            set: { _ in }
+        )) {
+            // 两道闸门，顺序不能反：
+            //   ① 先同意条款（审核要求，且要看懂我们在拿数据做什么）
+            //   ② 再登录（不然没有身份，谁也加不了谁）
+            Group {
+                if !hasAcceptedTerms {
+                    TermsGateView {
+                        withAnimation(.snappy) { hasAcceptedTerms = true }
+                    }
+                } else {
+                    AuthGateView()
+                }
             }
+            // ⚠️ 必须在这里**再注入一次**环境。
+            //
+            // 外面那句 .environment(auth) 挂在 TabView 上，而 .fullScreenCover
+            // 是之后才挂上去的 —— 弹出来的内容**没有继承到**那个环境。
+            // 结果 AuthGateView 里的 @Environment(AuthStore.self) 取不到值，
+            // 直接触发断言崩溃（崩溃栈顶是 EnvironmentValues.subscript.getter）。
+            //
+            // 这个坑很典型：**弹窗 / 全屏覆盖的内容，环境要显式传**。
+            .environment(store)
+            .environment(auth)
             .interactiveDismissDisabled()
         }
         .task {
             // 开发用开关
             if DevFlags.resetTerms { hasAcceptedTerms = false }
             if DevFlags.acceptTerms { hasAcceptedTerms = true }
+
+            // 开发用：自动建号并登录，省得每次截图都手打
+            if DevFlags.devSignIn, auth.account == nil {
+                await auth.signUp(email: DevFlags.devEmail,
+                                  password: DevFlags.devPassword,
+                                  confirmPassword: DevFlags.devPassword)
+                if auth.account == nil {
+                    // 已经注册过就直接登录
+                    await auth.signIn(email: DevFlags.devEmail, password: DevFlags.devPassword)
+                }
+            }
+
             await store.start()
             // 开发自检：启动并加载完之后，执行一次"删除账号"，验证真的清干净
             if DevFlags.devWipe {

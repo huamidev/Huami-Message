@@ -15,6 +15,7 @@ import SwiftUI
 struct ProfileView: View {
 
     @Environment(ChatStore.self) private var store
+    @Environment(AuthStore.self) private var auth
 
     /// 正在查看的法律文档（隐私政策 / 服务条款）
     @State private var showDocument: LegalDocument?
@@ -69,21 +70,44 @@ struct ProfileView: View {
 
     private var identityCard: some View {
         HStack(spacing: 14) {
-            Avatar(initial: "华", seed: 0, size: 60)
+            Avatar(initial: displayInitial, seed: auth.account?.avatarSeed ?? 0, size: 60)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("未登录")
+            VStack(alignment: .leading, spacing: 5) {
+                Text(auth.account?.displayName ?? "未登录")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
-                Text("第 1 步会接入账号（通过 Apple 登录）")
+
+                Text(auth.account?.email ?? "还没有登录")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1)
+
+                // 邀请码先摆出来。加好友的功能接上服务器就能用，
+                // 但"我的邀请码是什么"这件事现在就该让用户看得到。
+                if let code = auth.account?.inviteCode {
+                    HStack(spacing: 5) {
+                        Image(systemName: "ticket.fill")
+                            .font(.system(size: 10))
+                        Text("邀请码 \(code)")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Theme.accentSoft, in: Capsule())
+                }
             }
 
             Spacer()
         }
         .padding(16)
         .card()
+    }
+
+    /// 头像上显示那个字
+    private var displayInitial: String {
+        guard let name = auth.account?.displayName, let first = name.first else { return "?" }
+        return String(first).uppercased()
     }
 
     // MARK: - 隐私（重要）
@@ -129,6 +153,21 @@ struct ProfileView: View {
             .buttonStyle(.plain)
             divider
             settingRow("举报与屏蔽", value: "待接入", enabled: false)
+            divider
+            Button {
+                Haptics.tap()
+                Task { await auth.signOut() }
+            } label: {
+                HStack {
+                    Text("退出登录")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.danger)
+                    Spacer()
+                }
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .padding(16)
         .card()
