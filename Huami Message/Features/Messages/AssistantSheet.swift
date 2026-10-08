@@ -1,24 +1,21 @@
 import SwiftUI
 
-/// 小助手面板 —— 「AI 好友」这一模块的新形态。
+/// 小助手面板。
 ///
-/// 【为什么它不再是一个独立的 Tab】
+/// 【这一版改了什么，为什么】
 ///
-/// 它的工作是「看懂对方说的话，帮你想怎么回」。
-/// 那它就该待在**对话发生的那个界面里** ——
-/// 让用户把对方的话复制出来、切到另一个 Tab、再粘进去，是白白多出来的两步。
+/// 原来用户要：点悬浮图标 → 打开面板 → 再点一次"帮我看看"。
+/// 现在用户点的是**一个具体问题**（"他什么意思？"/"我该怎么回？"），
+/// 面板打开就已经在跑了 —— 少一步，而且不用自己组织语言描述需求。
 ///
-/// 现在它就是聊天页里一个悬浮的小按钮，点开就是这个面板：
-/// 它已经看得见你正在聊的这段对话，不用你复制粘贴。
-///
-/// 【隐私上守的两条底线】
-///   1. **必须用户主动点两次**（点开小助手 + 再点"帮我看看"）才会发送对话内容
-///   2. 发送前把"要发哪一段"直接显示出来，让用户点之前就知道
-///
-/// 这是「知情同意」，不是「默认同意」。这两者差别很大。
+/// 代价是"发送"这个动作提前到了点击选项的那一刻。所以：
+///   · 选项所在的小方块上**一直写着**"会把最近 N 条消息发给 AI"
+///   · 面板顶部把**本次真正发送的内容**原样列出来
+/// 这样用户点之前知道会发生什么，点之后也能核对 —— 仍然是知情同意。
 struct AssistantSheet: View {
 
     let context: AssistantContext
+    let intent: AssistantIntent
 
     /// 用户选了某条建议 → 填回输入框（不自动发送）
     var onUseReply: (String) -> Void
@@ -29,31 +26,22 @@ struct AssistantSheet: View {
 
     @State private var analysis = ""
     @State private var suggestions: [String] = []
-    @State private var isThinking = false
     @State private var task: Task<Void, Never>?
-
-    private var hasResult: Bool { !analysis.isEmpty }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    introHeader
-                    privacyCard
-
-                    if !hasResult {
-                        startButton
-                    } else {
-                        analysisCard
-                        if !suggestions.isEmpty { suggestionsCard }
-                    }
+                    contextCard
+                    if analysis.isEmpty { thinkingCard } else { analysisCard }
+                    if !suggestions.isEmpty { suggestionsCard }
                 }
                 .padding(16)
                 .padding(.bottom, 24)
             }
             .scrollIndicators(.hidden)
             .background(AppBackground())
-            .navigationTitle("小助手")
+            .navigationTitle(intent.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -62,54 +50,26 @@ struct AssistantSheet: View {
             }
         }
         .onDisappear { task?.cancel() }
-        // 开发用：带 -assistantGo 1 时自动开始，省掉手动点击（为了截图/验证）
-        .task {
-            if DevFlags.assistantGo { start() }
-        }
+        // 进来自动开始 —— 用户点那个选项，本身就已经是"我要问这个"的意思了
+        .task { start() }
     }
 
-    // MARK: - 小助手的自我介绍
+    // MARK: - 本次发送了什么（放在最上面，让用户可以核对）
 
-    /// 面板顶部：形象 + 一句话说明它是干什么的。
-    ///
-    /// 为什么值得单独有一块：一个"有脸"的助手会比一个纯功能面板
-    /// 显得更像在跟你说话，用户也更愿意用它。
-    /// 这一块不承载任何功能，纯粹是让界面有个人味。
-    private var introHeader: some View {
-        HStack(spacing: 12) {
-            Image("AssistantAvatar")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 56, height: 56)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("我是小助手")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                Text("帮你看懂对方的意思，想好怎么回")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            Spacer()
-        }
-    }
-
-    // MARK: - 发送之前先说清楚要发什么
-
-    private var privacyCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 7) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 13, weight: .semibold))
+    private var contextCard: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 6) {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 11))
                     .foregroundStyle(Theme.mint)
-                Text("点「帮我看看」时，会发送这些内容")
-                    .font(.system(size: 14, weight: .semibold))
+                Text("本次发送给 AI 的内容")
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
             }
 
             Text("你和\(context.friendName)最近 \(context.messages.count) 条消息")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textSecondary)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textTertiary)
 
             if let last = context.lastFriendMessage {
                 // 把"对方最后说的那句"原样贴出来 ——
@@ -126,49 +86,33 @@ struct AssistantSheet: View {
                 }
                 .padding(.vertical, 2)
             }
-
-            Text("发送前请确认这段对话里没有你不想让别人看到的信息。")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .card()
+        .padding(14)
+        .card(.subtle, radius: 14)
     }
 
-    // MARK: - 开始
+    // MARK: - 还在想
 
-    private var startButton: some View {
-        Button(action: start) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                Text("帮我看看怎么回")
-            }
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(Theme.myBubbleGradient, in: Capsule())
+    private var thinkingCard: some View {
+        HStack(spacing: 8) {
+            StreamingCaret()
+            Text("正在想…")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer()
         }
-        .disabled(isThinking)
-        .opacity(isThinking ? 0.6 : 1)
+        .padding(16)
+        .card()
     }
 
     // MARK: - 分析（流式）
 
     private var analysisCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 7) {
-                Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.warning)
-                Text("他是这个意思")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                Spacer()
-                if isThinking { StreamingCaret() }
-            }
+            Text(intent.heading)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
 
             // 用 LocalizedStringKey 让文本里的 **粗体** 生效
             Text(LocalizedStringKey(analysis))
@@ -184,15 +128,15 @@ struct AssistantSheet: View {
         .card()
     }
 
-    // MARK: - 可以这样回
+    // MARK: - 可以直接用的句子
 
     private var suggestionsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("可以这样回")
+            Text(intent == .draft ? "挑一个往下写" : "挑一个发出去")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
 
-            ForEach(Array(suggestions.enumerated()), id: \.offset) { index, text in
+            ForEach(Array(suggestions.enumerated()), id: \.offset) { _, text in
                 VStack(alignment: .leading, spacing: 10) {
                     Text(text)
                         .font(.system(size: 15))
@@ -222,7 +166,7 @@ struct AssistantSheet: View {
         }
         .padding(16)
         .card()
-        // 建议是"分析完之后一次性给"的，所以它出现时会突然多出来一块。
+        // 建议是"文字吐完之后一次性给"的，所以它出现时会突然多出来一块。
         // 加个动画，让它滑进来而不是"啪"地跳出来。
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
@@ -230,12 +174,10 @@ struct AssistantSheet: View {
     // MARK: - 动作
 
     private func start() {
-        guard !isThinking, analysis.isEmpty else { return }
-        isThinking = true
+        guard task == nil else { return }
 
-        task?.cancel()
         task = Task {
-            for await event in ai.advise(context: context) {
+            for await event in ai.advise(context: context, intent: intent) {
                 if Task.isCancelled { break }
                 switch event {
                 case .analysis(let chunk):
@@ -247,7 +189,6 @@ struct AssistantSheet: View {
                 }
             }
             if !Task.isCancelled { Haptics.success() }
-            isThinking = false
         }
     }
 }

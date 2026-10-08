@@ -83,24 +83,30 @@ struct ChatView: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .frame(height: 48)
+                    .frame(height: 30)
                     .allowsHitTesting(false)   // 别挡住手指滚动
 
                     VStack(spacing: 6) {
-                        // ── 小助手的入口 ──
-                        // 悬浮在输入栏正上方、靠右。
-                        // 它不再是一个底部 Tab：一个"帮你看懂这段对话"的助手，
-                        // 就该待在对话发生的这个界面里，而不是让用户复制来复制去。
-                        HStack {
-                            // 只有用户往上翻的时候才出现 —— 平时不占地方、不抢注意力
-                            jumpToLatestButton(proxy: proxy)
-                            Spacer()
-                            assistantButton
+                        // 「回到最新」只在用户往上翻的时候出现 —— 平时不占地方
+                        if !isNearBottom {
+                            HStack {
+                                Spacer()
+                                jumpToLatestButton(proxy: proxy)
+                            }
+                            .padding(.horizontal, 18)
                         }
-                        .padding(.horizontal, 18)
-                        // 按钮的出现/消失要有动画，否则它会"啪"地跳出来，
-                        // 在一堆流畅的滚动里显得很突兀
-                        .animation(.snappy(duration: 0.22), value: isNearBottom)
+
+                        // ── 小助手的入口 ──
+                        // 常驻在这里，不做"打字时隐藏"。
+                        //
+                        // 我试过在输入框有字时把它收起来（理由是"你已经在打字了，
+                        // 说明你知道要说什么"），但那样会让面板高度忽高忽低，
+                        // 列表位置跟着跳 —— 为了省 80 磅换来一次跳动，不划算。
+                        //
+                        // 常驻还有一个好处：它的存在本身就在提醒用户
+                        // "这里有个东西能帮你"。
+                        assistantQuickBox
+                            .padding(.horizontal, 12)
 
                         ChatInputBar(
                             text: $draft,
@@ -108,6 +114,10 @@ struct ChatView: View {
                             onSend: send
                         )
                     }
+                    // 面板高度会随着上面两个东西的出现/消失变化，
+                    // 不做动画的话它们会"啪"地弹出/消失
+                    .animation(.snappy(duration: 0.24), value: isNearBottom)
+                    .animation(.snappy(duration: 0.24), value: draft.isEmpty)
                 }
                 // ── 把悬浮标签栏那一块也盖上 ──
                 //
@@ -151,7 +161,7 @@ struct ChatView: View {
             .presentationCornerRadius(30)
         }
         .sheet(item: $assistantRequest) { request in
-            AssistantSheet(context: request.context) { reply in
+            AssistantSheet(context: request.context, intent: request.intent) { reply in
                 // 和润色一样：只填回输入框，不自动发送。
                 draft = reply
             }
@@ -209,7 +219,8 @@ struct ChatView: View {
                     context: store.assistantContext(
                         for: conversation.friend.id,
                         friendName: conversation.friend.name
-                    )
+                    ),
+                    intent: .reply
                 )
             }
 
@@ -305,40 +316,58 @@ struct ChatView: View {
 
     // MARK: - 小助手的入口
 
-    /// 悬浮的小助手按钮。
+    /// 小助手的入口：一个**小方块，里面直接摆几个具体问题**。
     ///
-    /// 为什么是一个带字的小胶囊，而不是一个纯图标按钮：
-    /// 它和输入栏左边那个 ✨（润色）**功能完全不同** ——
-    /// 一个改你打的这句话，一个帮你想整件事该怎么办。
-    /// 两个图标长得一样、又挨得近，用户一定会搞混。
-    /// 写上「小助手」三个字，这个歧义就没了。
-    private var assistantButton: some View {
-        Button {
-            assistantRequest = AssistantRequest(
-                context: store.assistantContext(
-                    for: conversation.friend.id,
-                    friendName: conversation.friend.name
-                )
-            )
-        } label: {
+    /// 【为什么不做成"一个图标按钮，点开再选"】
+    ///
+    /// 想找小助手的人，心里其实已经有一个具体问题了：
+    /// "他这话到底什么意思"、"我该怎么回"、"帮我起个头"。
+    /// 与其让他点开一个面板、再打字描述需求，不如把问题直接摆在面前 ——
+    /// **少一步，而且不用组织语言**。
+    ///
+    /// 上面那行小字一直在，用户点之前就知道会发生什么 —— 这是知情同意的前提。
+    private var assistantQuickBox: some View {
+        VStack(alignment: .leading, spacing: 7) {
+
             HStack(spacing: 4) {
-                // 用小助手的形象，而不是通用的 sparkles 图标 ——
-                // 它现在有"脸"了，用户一眼就认得出这是谁在跟他说话。
-                Image("AssistantAvatar")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 20, height: 20)
-                Text("小助手")
-                    .font(.system(size: 12, weight: .medium))
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                Text("小助手 · 点选项会把最近 \(AssistantContext.recentLimit) 条消息发给 AI")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+                Spacer(minLength: 0)
             }
-            .foregroundStyle(Theme.accent)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
-            .background(Theme.surface, in: Capsule())
-            .overlay { Capsule().strokeBorder(Theme.separator, lineWidth: 0.5) }
-            .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+
+            HStack(spacing: 7) {
+                ForEach(AssistantIntent.allCases) { intent in
+                    Button {
+                        Haptics.tap()
+                        assistantRequest = AssistantRequest(
+                            context: store.assistantContext(
+                                for: conversation.friend.id,
+                                friendName: conversation.friend.name
+                            ),
+                            intent: intent
+                        )
+                    } label: {
+                        Text(intent.title)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(Theme.accent)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(Theme.accentSoft, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
-        .buttonStyle(.plain)
+        .padding(10)
+        .card(radius: 16)
     }
 
     // MARK: - 消息列表
@@ -510,4 +539,5 @@ struct PolishRequest: Identifiable {
 struct AssistantRequest: Identifiable {
     let id = UUID()
     let context: AssistantContext
+    let intent: AssistantIntent
 }

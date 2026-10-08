@@ -38,6 +38,45 @@ struct AssistantContext {
     static let recentLimit = 10
 }
 
+// MARK: - 助手能干的几种事
+
+/// 用户想让小助手做什么。
+///
+/// 【为什么要做成枚举，而不是让用户自己描述】
+///
+/// 想找小助手的人，心里其实已经有一个**具体问题**了：
+/// "他这话到底什么意思"、"我该怎么回"、"帮我起个头"。
+///
+/// 与其让他点开一个面板、再打字描述需求，不如把这几个问题直接摆在面前 ——
+/// **少一步，而且不用组织语言**。这也顺便把提示词固定下来了：
+/// 每种意图对应一套明确的指令，比让用户自由发挥稳定得多。
+enum AssistantIntent: String, CaseIterable, Identifiable, Codable {
+
+    case explain   // 他什么意思
+    case reply     // 我该怎么回
+    case draft     // 帮我起草
+
+    var id: String { rawValue }
+
+    /// 摆在小方块里的按钮文字。要短，一眼扫得完。
+    var title: String {
+        switch self {
+        case .explain: "他什么意思？"
+        case .reply:   "我该怎么回？"
+        case .draft:   "帮我起草"
+        }
+    }
+
+    /// 进面板后的标题（比按钮文字可以说得更完整）
+    var heading: String {
+        switch self {
+        case .explain: "他是这个意思"
+        case .reply:   "可以这样回"
+        case .draft:   "给你起了个头"
+        }
+    }
+}
+
 // MARK: - 助手的两种输出
 
 /// 助手吐出来的东西，分成两种。
@@ -76,6 +115,7 @@ protocol AIService {
     /// 注意：这里**只传一句话，不传聊天记录** —— 这是刻意的隐私设计。
     func polish(_ text: String, style: PolishStyle) -> AsyncStream<String>
 
-    /// 小助手：看一段对话，先流式给分析，再给几条可以直接用的回复。
-    func advise(context: AssistantContext) -> AsyncStream<AssistantEvent>
+    /// 小助手：看一段对话，按指定的意图给出结果。
+    /// 先流式吐文字，再给几条可以直接用的回复。
+    func advise(context: AssistantContext, intent: AssistantIntent) -> AsyncStream<AssistantEvent>
 }

@@ -25,39 +25,70 @@ final class MockAIService: AIService {
 
     // MARK: 模块二：小助手（看整段对话）
 
-    func advise(context: AssistantContext) -> AsyncStream<AssistantEvent> {
+    func advise(context: AssistantContext, intent: AssistantIntent) -> AsyncStream<AssistantEvent> {
         let name = context.friendName
         let quoted = String((context.lastFriendMessage?.text ?? "").prefix(24))
 
-        // 分析部分。
-        // 刻意写得像"人话"，而且真的引用了对方最后那句话 ——
-        // 这样你看着能判断这个交互对不对，而不是对着一堆废话找不到感觉。
-        let analysis = """
-        先别急着解释。\(name)最后那句是「\(quoted)」，重点其实不在字面上。
+        // 三种意图给三套不同的内容。
+        // 真接上 DeepSeek 之后，这里是三套不同的**提示词** ——
+        // 但界面和数据结构一行都不用改，因为大家都在 AssistantEvent 这个插座上。
+        let analysis: String
+        let suggestions: [String]
 
-        这句话底下压着两件事：一是「我为你留了时间，你没出现」—— 这是失望；
-        二是把压力从一个人变成了一群人 —— 这是让你不好反驳。
+        switch intent {
 
-        所以他真正想听的不是理由，而是「我知道这件事对你重要」。
-        顺序很关键：**先接住情绪，再讲事实**。反过来就一定吵起来。
-        """
+        case .explain:
+            analysis = """
+            \(name)最后那句是「\(quoted)」。
 
-        // 三条可以直接用的回复
-        let suggestions = [
-            "抱歉，昨天确实没到。我知道你们等了很久，这事是我不对。",
-            "昨天临时出了点事走不开，没来得及跟你们讲，对不起。",
-            "等我很久了吧？昨天实在脱不开身，回头我请你们吃饭赔罪。",
-        ]
+            这句话表面在问你为什么，底下其实压着两件事：
+            一是「我为你留了时间，你没出现」—— 这是失望；
+            二是把压力从一个人变成了一群人 —— 这是让你不好反驳。
+
+            所以他真正想听的不是理由，而是「我知道这件事对你重要」。
+            """
+            // 「他什么意思」只解释，不替你想怎么回 ——
+            // 有时候人只是想先听明白，不想马上做决定
+            suggestions = []
+
+        case .reply:
+            analysis = """
+            先别急着解释。核心顺序是：**先接住情绪，再讲事实**。
+
+            \(name)那句话的重点不在字面上，而在"我在意这件事，而你没当回事"。
+            所以第一句要先认下这件事，理由放在后面说 ——
+            反过来（先解释原因）就一定吵起来。
+            """
+            suggestions = [
+                "抱歉，昨天确实没到。我知道你们等了很久，这事是我不对。",
+                "昨天临时出了点事走不开，没来得及跟你们讲，对不起。",
+                "等我很久了吧？昨天实在脱不开身，回头我请你们吃饭赔罪。",
+            ]
+
+        case .draft:
+            analysis = """
+            不知道开头怎么写的时候，最好的办法是**直接承认那件事**，别绕。
+
+            给你起了三个头，你挑一个往下接就行：
+            """
+            suggestions = [
+                "昨天的事是我不对。我想跟你说一下当时的情况。",
+                "有件事我一直想跟你说，拖了两天，还是现在说比较好。",
+                "\(name)，昨天的局我搞砸了，想跟你认真道个歉。",
+            ]
+        }
 
         return AsyncStream { continuation in
             let task = Task {
-                // 先流式吐分析
+                // 先流式吐文字
                 for await chunk in Self.stream(analysis, chunk: 3, interval: .milliseconds(18)) {
                     if Task.isCancelled { break }
                     continuation.yield(.analysis(chunk))
                 }
-                // 分析吐完了，再一次性给建议
-                continuation.yield(.suggestions(suggestions))
+                // 文字吐完了，再一次性给可以用的句子（如果有）
+                if !suggestions.isEmpty, !Task.isCancelled {
+                    continuation.yield(.suggestions(suggestions))
+                }
                 continuation.finish()
             }
             continuation.onTermination = { _ in task.cancel() }
