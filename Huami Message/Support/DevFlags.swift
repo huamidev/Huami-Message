@@ -150,6 +150,11 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "testAvatar")
     }
 
+    /// 假装正在录音（截图没法按住按钮，得把这一屏调出来看位置）
+    static var fakeRecording: Bool {
+        UserDefaults.standard.bool(forKey: "fakeRecording")
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

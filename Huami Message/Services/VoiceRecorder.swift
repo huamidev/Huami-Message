@@ -16,6 +16,15 @@ final class VoiceRecorder {
 
     private(set) var isRecording = false
 
+    /// 界面上该不该显示"正在录"。
+    /// 多出来的那半句只是给开发自检用的 —— 截图按不住按钮。
+    var showsRecordingUI: Bool { isRecording || DevFlags.fakeRecording }
+
+    /// 界面上显示的秒数
+    var displaySeconds: Double {
+        isRecording ? seconds : (DevFlags.fakeRecording ? 3.4 : 0)
+    }
+
     /// 已经录了多少秒（界面上要跳数字）
     private(set) var seconds: Double = 0
 

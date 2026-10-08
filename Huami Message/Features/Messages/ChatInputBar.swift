@@ -52,6 +52,7 @@ struct ChatInputBar: View {
     }
 
     var body: some View {
+        ZStack(alignment: .top) {
         HStack(alignment: .bottom, spacing: 8) {
             circleButton(icon: toolsOpen ? "xmark" : "paperclip",
                          label: toolsOpen ? "收起工具栏" : "附件",
@@ -98,8 +99,14 @@ struct ChatInputBar: View {
                                     } else if let result = recorder.finish() {
                                         onSendVoice(result.data, result.seconds)
                                     } else {
-                                        // 太短：多半是误触。不报错，只是不发。
+                                        // 太短：多半是误触，不发。
+                                        //
+                                        // 但**不能默默什么都不做** ——
+                                        // 用户分不清"误触被丢掉了"和"功能坏了"。
+                                        // 我第一版就是默默丢掉，结果收到的反馈是
+                                        // "点击无反应"。
                                         Haptics.warning()
+                                        onVoiceProblem("说话时间太短了，按住多说一会儿再松手。")
                                     }
                                     cancelling = false
                                 }
@@ -113,6 +120,62 @@ struct ChatInputBar: View {
         .card(.elevated, radius: 26)
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
+
+        // ── 录音中的提示 ──
+        //
+        // ⚠️ **必须浮在输入栏上方**，不能就地显示在按钮上。
+        //    因为用户的手指正好按着那个按钮 —— 提示放在那儿等于没放。
+        //    微信也是把它放在上面一大块。
+        //
+        // 这一块我第一版**漏做了**：手势接好了，但屏幕上什么都不变，
+        // 用户按住之后唯一的感受就是"点了没反应"。
+        // **没有反馈的功能等于坏了的功能。**
+        if recorder.showsRecordingUI {
+            recordingHint
+                // ⚠️ 这个偏移量要**大于提示条自己的高度**，
+                //    否则它会压住输入栏（我第一版写 -118，正好压住一条边）。
+                //    提示条大概 140 磅高，留 20 磅空隙 → 160。
+                .offset(y: -160)
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                .zIndex(1)
+        }
+        }
+        .animation(.snappy(duration: 0.18), value: recorder.showsRecordingUI)
+        .animation(.snappy(duration: 0.18), value: cancelling)
+    }
+
+    /// 录音时浮在上方的提示条。
+    private var recordingHint: some View {
+        VStack(spacing: 10) {
+            Image(systemName: cancelling ? "xmark.circle.fill" : "waveform")
+                .font(.system(size: 26))
+                .foregroundStyle(cancelling ? Theme.danger : .white)
+                .symbolEffect(.variableColor.iterative, isActive: !cancelling)
+
+            Text(cancelling ? "松开手指，取消发送" : "松开发送")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(cancelling ? Theme.danger : .white)
+
+            Text(String(format: "%.1f″", recorder.displaySeconds))
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+
+            // 快到上限时提醒一下，别让用户录到一半被截断还不知道
+            if recorder.displaySeconds >= VoiceRecorder.maximumSeconds - 10 {
+                Text("最长 \(Int(VoiceRecorder.maximumSeconds)) 秒")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+        }
+        .padding(.horizontal, 26)
+        .padding(.vertical, 18)
+        .background(
+            // 取消状态换成红底：**颜色是最快的反馈**，
+            // 用户不用读字就知道"现在松手会取消"
+            (cancelling ? Theme.danger.opacity(0.92) : Color.black.opacity(0.78)),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
     }
 
     // MARK: - 中间的胶囊
