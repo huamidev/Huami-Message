@@ -46,7 +46,22 @@ enum AppServices {
 
     static func makeAuthService() -> AuthService {
         guard let client else { return MockAuthService() }
-        return SupabaseAuthService(client: client)
+        let service = SupabaseAuthService(client: client)
+
+        // ⚠️ **必须在这里装上刷新回调** —— 我上一版漏了这一步。
+        //
+        // 客户端里那段"401 就换 token 再重试"的逻辑，靠的是
+        // `client.refreshHandler` 非空。不装的话它是 nil，
+        // 整段逻辑一次都不会执行 —— **修了等于没修**，
+        // 而且编译不报错、运行也不报错，只有用满一小时才会发现。
+        //
+        // 用 weak 避免循环引用：client 持有这个闭包，
+        // 闭包持有 service，而 service 又持有 client。
+        client.refreshHandler = { [weak service] in
+            await service?.refreshSession() ?? false
+        }
+
+        return service
     }
 
     static func makeAIService() -> AIService {

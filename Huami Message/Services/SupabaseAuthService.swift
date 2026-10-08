@@ -130,6 +130,46 @@ final class SupabaseAuthService: AuthService {
 
     // MARK: - 用邮件链接里的凭证登录
 
+    /// 用 refresh token 换一个新的 access token。
+    ///
+    /// 这是**整个 App 能连续用下去的前提**：access token 一小时就过期，
+    /// 没有这一步的话，用户用满一小时之后所有操作都会 401。
+    func refreshSession() async -> Bool {
+        guard var session = Self.loadSession(),
+              let refresh = session.refreshToken,
+              !refresh.isEmpty
+        else { return false }
+
+        struct Body: Encodable { let refresh_token: String }
+        struct Response: Decodable {
+            let access_token: String
+            let refresh_token: String?
+        }
+
+        guard let response: Response = try? await client.post(
+            "/auth/v1/token",
+            query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
+            body: Body(refresh_token: refresh),
+            as: Response.self
+        ) else { return false }
+
+        // ⚠️ 服务器有时会**同时换掉 refresh token**（轮换）。
+        // 只更新 access 而丢掉新的 refresh，下次刷新就会失败 ——
+        // 表现是"用着用着突然要重新登录"。所以两个都要存。
+        session.accessToken = response.access_token
+        if let rotated = response.refresh_token, !rotated.isEmpty {
+            session.refreshToken = rotated
+        }
+        saveSession(session)
+
+        // 客户端的凭证和身份要一起设好，不然接下来还是拿旧的钥匙开门
+        // 只换凭证，**不动身份** —— StoredSession 里没存 userID，
+        // 而客户端身上已经有了（登录时设的）。身份本来也没变，
+        // 换掉反而可能设成 nil，出现"用新钥匙开旧门"。
+        client.setSession(accessToken: session.accessToken, userID: client.currentUserID)
+        return true
+    }
+
     func adoptSession(accessToken: String, refreshToken: String?) async -> Account? {
         // 先把凭证装上 —— 接下来的请求要拿它去问服务器"我是谁"。
         // 注意 userID 先留空：现在还不知道，靠下面的请求问出来。

@@ -117,6 +117,9 @@ protocol AuthService {
     /// 钥匙串的 key 是 AuthService 自己的内部细节，
     /// 外面知道得越少，以后换存储方式就越不容易漏改。
     func currentSessionTokens() -> (access: String, refresh: String?)?
+
+    /// 用 refresh token 换一个新的 access token（过期时自动调用）。
+    func refreshSession() async -> Bool
 }
 
 extension AuthService {

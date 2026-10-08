@@ -54,6 +54,15 @@ final class SupabaseClient {
 
     /// 登录成功 / 退出登录时调用。凭证和身份必须**一起**更新 ——
     /// 只换凭证不换身份，会出现"用新账号的钥匙开旧账号的门"这种怪事。
+    /// access token 过期时用它换新的。由 AppServices 在启动时装上。
+    ///
+    /// 【为什么放在客户端这一层】
+    ///
+    /// 401 可能来自**任何一个**请求：发消息、传图片、改资料、拉好友……
+    /// 在每一处各写一遍"先刷新再重试"必然会漏（而且以后新增接口还会漏）。
+    /// 放在这里，所有请求自动都有这个能力。
+    var refreshHandler: (() async -> Bool)?
+
     func setSession(accessToken: String?, userID: UUID?) {
         self.accessToken = accessToken
         self.currentUserID = userID
@@ -245,7 +254,8 @@ final class SupabaseClient {
                          path: String,
                          query: [URLQueryItem],
                          body: Data?,
-                         prefer: String?) async throws -> Data {
+                         prefer: String?,
+                         isRetry: Bool = false) async throws -> Data {
 
         var components = URLComponents(url: config.endpoint(path), resolvingAgainstBaseURL: false)
         if !query.isEmpty { components?.queryItems = query }
@@ -285,6 +295,25 @@ final class SupabaseClient {
 
         guard let http = response as? HTTPURLResponse else {
             throw SupabaseError.network
+        }
+
+        // ── token 过期：换一次，然后**原样重试一次** ──
+        //
+        // Supabase 的 access token 默认一小时过期。
+        // 原来没有任何刷新逻辑 —— 用满一小时之后，
+        // 发消息、发图片、换头像**全部**报 401（用户实测到的就是
+        // "发送失败：http(status: 401, message: \"JWT expired\")"）。
+        //
+        // ⚠️ 只重试**一次**（isRetry）。刷新之后再 401 说明是别的问题
+        //（账号被删、token 被吊销），这时要老实报错 ——
+        // 无脑重试会变成死循环，用户看到的是永远转圈。
+        if http.statusCode == 401, !isRetry, let refreshHandler {
+            AppLog.info(.network, "\(method.rawValue) \(path) → 401，换一次 token 再试")
+            if await refreshHandler() {
+                return try await perform(method, path: path, query: query,
+                                         body: body, prefer: prefer, isRetry: true)
+            }
+            AppLog.error(.network, "刷新 token 失败，需要重新登录")
         }
 
         guard (200..<300).contains(http.statusCode) else {

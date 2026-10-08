@@ -136,6 +136,9 @@ final class MockAuthService: AuthService {
 
     func currentSessionTokens() -> (access: String, refresh: String?)? { nil }
 
+    /// 示例模式没有真会话，没什么可刷新的。
+    func refreshSession() async -> Bool { false }
+
 
     func signOut() async {
         store.removeObject(forKey: sessionKey)
