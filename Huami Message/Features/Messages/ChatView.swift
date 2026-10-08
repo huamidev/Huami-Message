@@ -246,14 +246,20 @@ struct ChatView: View {
                     .animation(.snappy(duration: 0.24), value: isNearBottom)
                     .animation(.snappy(duration: 0.24), value: draft.isEmpty)
                 }
-                // ── 把悬浮标签栏那一块也盖上 ──
+                // ── 这里原来铺了一整块不透明的背景，现在去掉了 ──
                 //
-                // ⚠️ 这里必须用 background 的 ignoresSafeAreaEdges 参数，
-                //    **不能**靠 .ignoresSafeArea()。
-                //    我试过后者：在 ZStack 的底部对齐子视图里它根本不生效 ——
-                //    用红色探针量出来，渐隐层的底边老老实实停在安全区底边，
-                //    下面还有 74 磅露着消息。
-                .background(Theme.background, ignoresSafeAreaEdges: .bottom)
+                // 它当时的作用是"把悬浮标签栏那一块也盖上"——
+                // 但**聊天页现在根本不显示标签栏**（进聊天页时它会收走），
+                // 所以这块东西已经没有任何存在理由，只是留在那里：
+                //   · 让输入栏那一带变成不透明的一块（用户要的是透明）
+                //   · 还挡住了那一块底下的消息
+                //
+                // 教训：注释写清楚了"为什么"，但**那个"为什么"会过期**。
+                // 底栏改成自动隐藏之后，这行就该跟着删 —— 没人会想起来。
+                //
+                // 顺带说明为什么不需要补别的：整页的背景是 AppBackground
+                // （一条 ignoresSafeArea 的纯色），底部安全区本来就是它铺满的，
+                // 拿掉这行不会露出白边。
             }
         }
         .navigationTitle(conversation.friend.name)
