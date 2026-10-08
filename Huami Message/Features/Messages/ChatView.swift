@@ -209,8 +209,16 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         // 导航栏也做成毛玻璃 —— 消息从它下面滚过去时，
         // 会透出一层模糊的颜色在动。这种「边缘也在呼吸」的细节很值钱。
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        // 顶栏**不做成一条不透明的横条**（照 Telegram 的做法）。
+        //
+        // 原来写的是 .toolbarBackground(.ultraThinMaterial) + .visible：
+        // 那会画一条贯穿整屏的毛玻璃，内容滚到它下面时被"切断"，
+        // 看起来像两个割裂的区域。
+        //
+        // 改成 hidden 之后，**顶栏本身什么都不画**，
+        // 只有浮在上面的那几个元素（返回、名字胶囊、菜单）。
+        // 消息从它们底下穿过去 —— 这才是一个整体的对话界面。
+        .toolbarBackground(.hidden, for: .navigationBar)
         // 进聊天页就**把底栏藏起来**（微信、Telegram 都是这样）。
         //
         // 【为什么要专门写这一行】
@@ -225,6 +233,25 @@ struct ChatView: View {
         // 写在 TabView 上会连根一起藏掉，返回之后也回不来。
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
+            // 名字装在**一个胶囊里**，浮在对话上面。
+            //
+            // 为什么不用系统默认的标题：系统标题是画在导航栏那一层上的，
+            // 要么跟着那条横条一起显示、要么一起消失。
+            // 装进胶囊之后它是一个**独立的小牌子**，
+            // 底下的消息滚过去时从它两边经过 —— Telegram 就是这么做。
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text(conversation.friend.name)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 6)
+                .background(.regularMaterial, in: Capsule())
+                .overlay { Capsule().strokeBorder(Theme.separator, lineWidth: 0.5) }
+            }
+
             ToolbarItem(placement: .topBarTrailing) { manageMenu }
         }
         .safeAreaInset(edge: .top) {
