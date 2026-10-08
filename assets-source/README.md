@@ -38,23 +38,34 @@
 
 ## 重新生成 App 图标
 
+**目前的决定：直接用原图，不做任何处理。**
+
+试过给它加蓝色底（正片叠底，线条完好），但用户要的是"就用这张图"。
+原图本来就是白底方图，直接缩放就是最忠实的做法。
+
 ```bash
 # 1. 编译工具
 mkdir -p .tmp
 xcrun swiftc -module-cache-path ./.tmp/mc assets-source/imgtool.swift -o ./.tmp/imgtool
 
-# 2. 裁到内容边界（原图留白不对称，不裁的话角色是歪的）
-#    注意：这里**不需要**先去白底 —— trim 在没有 alpha 通道时会用
-#    "离白色多远"来找内容边界
-./.tmp/imgtool trim assets-source/icon-original.webp ./.tmp/trim.png 24
+# 2. 直接用原图（占比 100 就是不缩放地铺满）
+./.tmp/imgtool icon assets-source/icon-original.webp ./.tmp/appicon.png 1024 FFFFFF 100
 
-# 3. 正片叠底合成 App 图标
-./.tmp/imgtool icon ./.tmp/trim.png ./.tmp/appicon.png 1024 12B7F5 82 multiply
-#                                                                 ↑尺寸 ↑底色 ↑占比 ↑关键
-
-# 4. 放进资源目录
+# 3. 放进资源目录
 cp ./.tmp/appicon.png "Huami Message/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
 ```
+
+> 这里的 `FFFFFF` 和 `100` 其实都不起作用 —— 原图本身是不透明的白底方图，
+> 铺满整个画布之后底色被完全盖住。写出来只是为了让命令完整。
+
+### 想换回蓝色底（线条完好，用正片叠底）
+
+```bash
+./.tmp/imgtool trim assets-source/icon-original.webp ./.tmp/trim.png 24
+./.tmp/imgtool icon ./.tmp/trim.png ./.tmp/appicon.png 1024 12B7F5 82 multiply
+```
+
+`multiply` 是**唯一**能在换底色的同时保住手绘线条的办法（见上面）。
 
 ### 必须核对
 
