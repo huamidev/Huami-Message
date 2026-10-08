@@ -28,6 +28,9 @@ struct RootView: View {
 
     /// 四个页签。
     ///
+    /// 顺序：消息 / 联系人 / 我 / 搜索。
+    /// 搜索**固定在最右边** —— 用户会闭着眼睛去点，位置定了就别动。
+    ///
     /// 【为什么把"搜索"单独拎出来】
     ///
     /// 放在消息页顶上时，搜索框会**一直占着一条**，而它大部分时候是空着的。
@@ -84,12 +87,6 @@ struct RootView: View {
                 }
                 .tag(Tab.messages)
 
-            SearchView()
-                .tabItem {
-                    Label("搜索", systemImage: "magnifyingglass")
-                }
-                .tag(Tab.search)
-
             ContactsView()
                 .tabItem {
                     Label("联系人", systemImage: "person.2.fill")
@@ -101,6 +98,16 @@ struct RootView: View {
                     Label("我", systemImage: "person.crop.circle.fill")
                 }
                 .tag(Tab.profile)
+
+            // ⚠️ 搜索放**最右边**（用户要求：和 Telegram 一样，
+            // 搜索单独拎出来、位置固定在右手边）。
+            // 这类"肌肉记忆"的位置一旦定了就别再动 ——
+            // 用户会闭着眼睛去点，位置变了就会误触。
+            SearchView()
+                .tabItem {
+                    Label("搜索", systemImage: "magnifyingglass")
+                }
+                .tag(Tab.search)
         }
         .tint(Theme.accent)
         // 把数据管家交给下面所有页面
