@@ -23,6 +23,12 @@ struct ChatInputBar: View {
 
     @Environment(AuthStore.self) private var auth
 
+    /// 三个零件统一的高度。
+    ///
+    /// 和顶栏返回键同尺寸（40）。放成常量而不是三处各写一个数 ——
+    /// 写三处的话，改一个忘一个，出来的东西就不一般齐了。
+    static let controlHeight: CGFloat = 40
+
     /// 输入框的焦点。**由聊天页持有** ——
     /// 因为"点聊天区收键盘"要由它来关掉，藏在里面外面够不着。
     var focused: FocusState<Bool>.Binding
@@ -212,7 +218,8 @@ struct ChatInputBar: View {
                 .foregroundStyle(recorder.isRecording ? Theme.accent : Theme.textSecondary)
         }
         .frame(maxWidth: .infinity)
-        // **不加底** —— 用整页那个画布（见文件末尾的说明）
+        .frame(height: Self.controlHeight)
+        .pillGlass()
         .contentShape(Capsule())
         .gesture(
             // DragGesture(minimumDistance: 0) 而不是长按手势：
@@ -294,6 +301,9 @@ struct ChatInputBar: View {
         .animation(.snappy(duration: 0.18), value: canSend)
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
+        // 和两边圆钮**一模一样的高度**，三个零件才一般齐
+        .frame(height: Self.controlHeight)
+        .pillGlass()
         // **输入框也不加底。**
         //
         // 这是最后一块 —— 前面拆了四次都留着它，所以屏幕中间
@@ -321,15 +331,9 @@ struct ChatInputBar: View {
         Image(systemName: icon)
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(filled ? .white : (active ? Theme.accent : Theme.textSecondary))
-            .frame(width: 34, height: 34)
-            // 只有"发送"那个按钮保留实心底 —— 它是个**动作按钮**，
-            // 不是输入区，需要一眼认出"点这里发出去"。
-            // 其余（回形针 / 麦克风）不加底，直接浮在画布上。
-            .background {
-                if filled {
-                    Circle().fill(Theme.myBubbleGradient)
-                }
-            }
+            // 尺寸统一 40×40，和顶栏返回键一样。
+            // 写常量不写三遍数字 —— 改一个忘一个就不齐了。
+            .frame(width: Self.controlHeight, height: Self.controlHeight)
             .rotationEffect(.degrees(rotated ? 90 : 0))
     }
 
@@ -339,13 +343,34 @@ struct ChatInputBar: View {
                               active: Bool = false,
                               rotated: Bool = false,
                               action: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.tap()
-            action()
-        } label: {
-            circleLabel(icon: icon, filled: filled, active: active, rotated: rotated)
+        // ⚠️ 这里就是"和顶栏返回键一样"的关键：
+        // .glass 是 iOS 26 那套液态玻璃按钮样式，**导航栏的返回键用的就是它**。
+        // 自己画一个圆底永远差一点点（这轮为这种事栽过四次），
+        // 直接用系统那套 —— 颜色、高光、阴影、按下反馈全都自动一致。
+        //
+        // 两个分支不能写成 `filled ? .plain : .glass` ——
+        // 那是两个不同的类型，推断不出来（编译报 "no member 'plain'"）。
+        Group {
+            if filled {
+                // 发送按钮是动作按钮，保留自己的实心配色，要一眼认出
+                Button {
+                    Haptics.tap()
+                    action()
+                } label: {
+                    circleLabel(icon: icon, filled: true, active: active, rotated: rotated)
+                        .background { Circle().fill(Theme.myBubbleGradient) }
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    Haptics.tap()
+                    action()
+                } label: {
+                    circleLabel(icon: icon, active: active, rotated: rotated)
+                }
+                .buttonStyle(.glass)
+            }
         }
-        .buttonStyle(.plain)
         .accessibilityLabel(label)
     }
 }
@@ -404,3 +429,26 @@ extension TextSelection {
 // 只有正中间那条 #F7F8FA —— 那不是"一条带"，是输入框胶囊自己。
 // **量一下比猜十次都快。**
 // ─────────────────────────────────────────────────────────────
+
+
+private extension View {
+    /// 给"长条"零件套上一层尽量接近液态玻璃的底。
+    ///
+    /// 圆钮那边直接 `.buttonStyle(.glass)` 就够了（它们本来就是 Button）。
+    /// 输入框不是按钮，用不了那个按钮样式，所以退一步用系统材质 + 细描边。
+    ///
+    /// **不要自己调颜色去"模仿"系统那套。** 这一轮已经在
+    /// "自己调一个看起来差不多的底"上面栽了四次 —— 能用系统的就用系统的，
+    /// 用不了的就用系统材质，别手配色值。
+    @ViewBuilder
+    func pillGlass() -> some View {
+        self.background {
+            Capsule(style: .continuous)
+                .fill(.regularMaterial)
+                .overlay {
+                    Capsule(style: .continuous)
+                        .strokeBorder(Theme.separator.opacity(0.55), lineWidth: 0.6)
+                }
+        }
+    }
+}
