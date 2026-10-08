@@ -15,17 +15,24 @@ struct Avatar: View {
 
     /// 六套配色。选了饱和度偏低、明度偏高的一组 ——
     /// 浅色界面里，头像太艳会抢走正文的注意力。
-    private var colors: [Color] {
-        let palettes: [[Color]] = [
-            [Color(hex: 0x4FA8F5), Color(hex: 0x2E8BE0)],
-            [Color(hex: 0x3FC7B4), Color(hex: 0x22A695)],
-            [Color(hex: 0xF57C8A), Color(hex: 0xE05A6B)],
-            [Color(hex: 0xF5A94F), Color(hex: 0xE08E2E)],
-            [Color(hex: 0x9B8CF5), Color(hex: 0x7A68E0)],
-            [Color(hex: 0x6BBF6B), Color(hex: 0x4CA04C)],
-        ]
-        return palettes[abs(seed) % palettes.count]
+    ///
+    /// 提成 static 是为了让"换底色"的选择器也能用同一份色表 ——
+    /// 各写一份的话，改了这里忘了那里，头像和选色点就对不上了。
+    static let palettes: [[Color]] = [
+        [Color(hex: 0x4FA8F5), Color(hex: 0x2E8BE0)],
+        [Color(hex: 0x3FC7B4), Color(hex: 0x22A695)],
+        [Color(hex: 0xF57C8A), Color(hex: 0xE05A6B)],
+        [Color(hex: 0xF5A94F), Color(hex: 0xE08E2E)],
+        [Color(hex: 0x9B8CF5), Color(hex: 0x7A68E0)],
+        [Color(hex: 0x6BBF6B), Color(hex: 0x4CA04C)],
+    ]
+
+    /// 第 seed 套配色（超出范围会绕回来）
+    static func palette(_ seed: Int) -> [Color] {
+        palettes[abs(seed) % palettes.count]
     }
+
+    private var colors: [Color] { Self.palette(seed) }
 
     var body: some View {
         RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)

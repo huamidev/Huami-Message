@@ -244,6 +244,13 @@ struct RootView: View {
                 await auth.signOut()
             }
 
+            // 开发自检：改一次简介，验证 PATCH 那条链路
+            if !DevFlags.saveBio.isEmpty, let me = auth.account {
+                _ = await auth.updateProfile(displayName: me.displayName,
+                                             bio: DevFlags.saveBio,
+                                             avatarSeed: me.avatarSeed)
+            }
+
             // 开发自检：自动加一个好友
             if !DevFlags.addFriendCode.isEmpty {
                 try? await store.addFriend(inviteCode: DevFlags.addFriendCode)

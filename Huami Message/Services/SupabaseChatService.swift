@@ -60,7 +60,7 @@ final class SupabaseChatService: ChatService {
         let profiles: [ProfileRow] = try await client.get(
             "/rest/v1/profiles",
             query: [
-                URLQueryItem(name: "select", value: "id,display_name,avatar_seed,invite_code"),
+                URLQueryItem(name: "select", value: "*"),
                 URLQueryItem(name: "id", value: "in.(\(ids))"),
             ],
             as: [ProfileRow].self
@@ -191,7 +191,7 @@ final class SupabaseChatService: ChatService {
         let profiles: [ProfileRow] = try await client.get(
             "/rest/v1/profiles",
             query: [
-                URLQueryItem(name: "select", value: "id,display_name,avatar_seed,invite_code"),
+                URLQueryItem(name: "select", value: "*"),
                 URLQueryItem(name: "id", value: "eq.\(friendID.uuidString.lowercased())"),
                 URLQueryItem(name: "limit", value: "1"),
             ],
@@ -269,6 +269,18 @@ struct ProfileRow: Decodable {
     let displayName: String
     let avatarSeed: Int
     let inviteCode: String
+
+    /// 简介。
+    ///
+    /// ⚠️ **必须是可选的，而且查询要用 `select=*`。**
+    ///
+    /// 因为 `bio` 这一列是后来才加的（要用户在 SQL Editor 里跑一句
+    /// `alter table ... add column bio`）。在他跑之前：
+    ///   · 用 `select=*` → 返回里没有 bio 这个键 → 可选值解码成 nil ✓
+    ///   · 用 `select=...,bio` → PostgREST 直接报"列不存在" ✗ 整个功能挂掉
+    ///
+    /// 这样写，**加字段前后都能正常工作** —— 用户什么时候跑那句 SQL 都行。
+    let bio: String?
 }
 
 struct MessageRow: Decodable {

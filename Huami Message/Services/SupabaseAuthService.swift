@@ -25,6 +25,22 @@ final class SupabaseAuthService: AuthService {
     /// 存不进去时置为 false，界面会告诉用户"下次打开要重新登录"。
     private(set) var isSessionPersisted = true
 
+    /// **内存里**的当前账号。
+    ///
+    /// 【为什么不能只靠钥匙串】
+    ///
+    /// 钥匙串在某些环境下写不进去 —— 比如没有正确签名的开发构建，
+    /// `SecItemAdd` 会返回 -34018（缺少权限）。
+    ///
+    /// 那种情况下 App 照样能用（内存里有账号、请求也带着凭证），
+    /// 但如果"改资料"这种操作也去**读钥匙串**拿当前账号，
+    /// 就会莫名其妙地报"你还没有登录" —— 用户明明就在界面上看着自己。
+    ///
+    /// 所以改成：**内存优先，钥匙串只负责"下次启动还能记得"。**
+    /// 这也是我自己踩出来的：改简介一直失败，
+    /// 查了半天才发现请求根本没发出去，卡在读钥匙串那一步。
+    private var cachedAccount: Account?
+
     /// 钥匙串里存这条会话用的键名
     private static let sessionKey = "supabase.session"
 
@@ -42,7 +58,12 @@ final class SupabaseAuthService: AuthService {
     // MARK: - 当前账号
 
     func currentAccount() -> Account? {
-        Self.loadSession()?.account
+        if let cachedAccount { return cachedAccount }
+        if let session = Self.loadSession() {
+            cachedAccount = session.account
+            return session.account
+        }
+        return nil
     }
 
     // MARK: - 注册
@@ -126,6 +147,62 @@ final class SupabaseAuthService: AuthService {
                                        refreshToken: refreshToken)
     }
 
+    // MARK: - 改资料
+
+    func updateProfile(displayName: String, bio: String, avatarSeed: Int) async throws -> Account {
+        guard let current = currentAccount() else { throw AuthError.notSignedIn }
+
+        let rows: [ProfileRow]
+        do {
+            rows = try await client.patch(
+                "/rest/v1/profiles",
+                query: [URLQueryItem(name: "id",
+                                     value: "eq.\(current.id.uuidString.lowercased())")],
+                body: ProfilePatch(displayName: displayName, bio: bio, avatarSeed: avatarSeed),
+                prefer: "return=representation",
+                as: [ProfileRow].self
+            )
+        } catch {
+            throw Self.translateProfileError(error)
+        }
+
+        let updated = Account(
+            id: current.id,
+            email: current.email,
+            displayName: displayName,
+            avatarSeed: avatarSeed,
+            inviteCode: rows.first?.inviteCode ?? current.inviteCode,
+            bio: bio
+        )
+
+        cachedAccount = updated
+
+        // 会话里存的那份也要更新 —— 否则下次启动又从本地读回旧昵称
+        if var session = Self.loadSession() {
+            session.account = updated
+            saveSession(session)
+        }
+        return updated
+    }
+
+    /// 把"数据库里没有 bio 这一列"翻译成一句能照做的话。
+    ///
+    /// 这个情况**一定会发生**：简介是后加的功能，需要用户在 SQL Editor 里
+    /// 跑一句 `alter table ... add column bio`。在他跑之前，
+    /// PostgREST 会回一句 "column profiles.bio does not exist" ——
+    /// 让用户看到这个等于没说。
+    private static func translateProfileError(_ error: Error) -> Error {
+        guard case SupabaseError.http(_, let message) = error else { return error }
+        if message.contains("bio") && message.contains("does not exist") {
+            return AuthError.unknown(
+                "数据库里还没有「简介」这一列。\n\n"
+                + "请在 Supabase 的 SQL Editor 里跑一句：\n"
+                + "alter table public.profiles add column if not exists bio text not null default '';"
+            )
+        }
+        return error
+    }
+
     // MARK: - 退出
 
     func signOut() async {
@@ -133,6 +210,7 @@ final class SupabaseAuthService: AuthService {
         // 失败也无所谓 —— 本地照样清干净，用户要的是"我退出了"。
         try? await client.post("/auth/v1/logout", body: EmptyBody())
         client.setSession(accessToken: nil, userID: nil)
+        cachedAccount = nil
         Keychain.delete(Self.sessionKey)
     }
 
@@ -177,9 +255,11 @@ final class SupabaseAuthService: AuthService {
             email: email,
             displayName: profile?.displayName ?? Account.name(from: email),
             avatarSeed: profile?.avatarSeed ?? 0,
-            inviteCode: profile?.inviteCode ?? "--------"
+            inviteCode: profile?.inviteCode ?? "--------",
+            bio: profile?.bio ?? ""
         )
 
+        cachedAccount = account
         saveSession(StoredSession(accessToken: accessToken,
                                   refreshToken: refreshToken,
                                   account: account))
@@ -278,6 +358,14 @@ private struct EmailOnly: Encodable {
 }
 
 private struct EmptyBody: Encodable {}
+
+/// 改资料时发给服务器的字段。
+/// 用 convertToSnakeCase 会自动变成 display_name / bio / avatar_seed。
+private struct ProfilePatch: Encodable {
+    let displayName: String
+    let bio: String
+    let avatarSeed: Int
+}
 
 private struct AuthUser: Decodable {
     let id: UUID

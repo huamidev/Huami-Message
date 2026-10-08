@@ -79,6 +79,19 @@ final class SupabaseClient {
         return try Self.decode(data, as: type)
     }
 
+    /// 改已有的数据（PostgREST 的 PATCH）。
+    /// 配 `Prefer: return=representation` 能把改完之后的那一行拿回来。
+    @discardableResult
+    func patch<Body: Encodable, T: Decodable>(_ path: String,
+                                              query: [URLQueryItem] = [],
+                                              body: Body,
+                                              prefer: String? = nil,
+                                              as type: T.Type) async throws -> T {
+        let payload = try Self.encode(body)
+        let data = try await perform(.patch, path: path, query: query, body: payload, prefer: prefer)
+        return try Self.decode(data, as: type)
+    }
+
     /// 不关心返回内容的 POST
     func post<Body: Encodable>(_ path: String,
                                query: [URLQueryItem] = [],

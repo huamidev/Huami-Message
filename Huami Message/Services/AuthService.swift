@@ -25,6 +25,16 @@ struct Account: Identifiable, Hashable, Codable {
     /// 邀请码。加好友靠它，不走通讯录。
     var inviteCode: String
 
+    /// 简介（一句话介绍自己）。
+    ///
+    /// **好友能看到** —— 这就是 Telegram 的做法，用户要的也是那个。
+    /// 所以它会被同步到服务器，不是本地备忘。
+    ///
+    /// 默认空字符串而不是可选值：界面上"没写简介"和"有简介"只差一个空判断，
+    /// 用 nil 表达会让每处都要多写一层解包。
+    var bio: String = ""
+
+
     /// 邮箱 @ 前面那段，当默认昵称用
     static func name(from email: String) -> String {
         let head = email.split(separator: "@").first.map(String.init) ?? email
@@ -65,6 +75,11 @@ protocol AuthService {
     /// 返回 nil 表示链接里没有可用凭证 —— 那就退回"手动登录一次"，
     /// 因为**邮箱本身已经在服务端验证成功了**，不该让他重来一遍。
     func adoptSession(accessToken: String, refreshToken: String?) async -> Account?
+
+    /// 改昵称、简介、头像色。
+    ///
+    /// 返回改完之后的新账号 —— 界面直接换上，不用再问一次服务器。
+    func updateProfile(displayName: String, bio: String, avatarSeed: Int) async throws -> Account
 
     /// 发一封"重置密码"的邮件
     func sendPasswordReset(email: String) async throws

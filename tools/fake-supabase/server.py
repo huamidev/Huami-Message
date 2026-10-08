@@ -281,6 +281,9 @@ class Handler(BaseHTTPRequestHandler):
                 "display_name": email.split("@")[0],
                 "avatar_seed": random.randint(0, 5),
                 "invite_code": make_invite_code(),
+                # 真服务器上这一列是后加的（要用户跑 alter table）。
+                # 假服务器直接给上，方便验证"改简介"这条链路。
+                "bio": "",
             }
             print(f"    → 200 注册成功，邀请码 {PROFILES[user_id]['invite_code']}")
             self._send(200, self._session(email, user_id))
@@ -428,6 +431,47 @@ class Handler(BaseHTTPRequestHandler):
             print(f"    → 400 不认识的 mode={mode}")
             self._stream_send({"type": "done"})
             self._stream_end()
+            return
+
+        print("    → 404 没有这个接口")
+        self._send(404, {"message": "Not found"})
+
+    # ---------- 改数据（PostgREST 的 PATCH）----------
+
+    def do_PATCH(self):
+        parsed = urlparse(self.path)
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        body = self._body()
+        self._log(f"PATCH body={body}")
+
+        if parsed.path == "/rest/v1/profiles":
+            me = self._me()
+            target = None
+            for value in query.get("id", []):
+                if value.startswith("eq."):
+                    target = value[3:]
+            if target is None or target != me:
+                print("    → 403 只能改自己那行")
+                self._send(403, {"message": "只能改自己的资料"})
+                return
+
+            profile = PROFILES.get(target)
+            if profile is None:
+                self._send(404, {"message": "找不到这个档案"})
+                return
+
+            # 只更新传上来的字段
+            changed = []
+            for key in ("display_name", "bio", "avatar_seed"):
+                if key in body:
+                    profile[key] = body[key]
+                    changed.append(key)
+            print(f"    → 200 改了 {changed}")
+
+            if "return=representation" in (self.headers.get("Prefer") or ""):
+                self._send(200, [profile])
+            else:
+                self._send(204, None)
             return
 
         print("    → 404 没有这个接口")

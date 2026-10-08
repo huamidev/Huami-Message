@@ -84,6 +84,24 @@ final class MockAuthService: AuthService {
         return record.account
     }
 
+    func updateProfile(displayName: String, bio: String, avatarSeed: Int) async throws -> Account {
+        try await simulateNetwork()
+        guard var account = currentAccount() else { throw AuthError.notSignedIn }
+
+        account.displayName = displayName
+        account.bio = bio
+        account.avatarSeed = avatarSeed
+
+        saveSession(account)
+        var records = loadRecords()
+        if var record = records[account.email.lowercased()] {
+            record.account = account
+            records[account.email.lowercased()] = record
+            save(records)
+        }
+        return account
+    }
+
     /// 假实现没有邮件链接这回事
     func adoptSession(accessToken: String, refreshToken: String?) async -> Account? { nil }
 

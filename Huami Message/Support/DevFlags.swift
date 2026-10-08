@@ -109,6 +109,16 @@ enum DevFlags {
         UserDefaults.standard.string(forKey: "searchFor") ?? ""
     }
 
+    /// 启动时自动打开「编辑资料」（截图没法点按钮）
+    static var openEditProfile: Bool {
+        UserDefaults.standard.bool(forKey: "openEditProfile")
+    }
+
+    /// 启动时自动把简介改成这个（验证"改资料"整条链路，截图点不了保存）
+    static var saveBio: String {
+        UserDefaults.standard.string(forKey: "saveBio") ?? ""
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

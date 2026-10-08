@@ -23,6 +23,9 @@ struct ProfileView: View {
     /// 是否正在确认"删除账号"
     @State private var showDeleteAccount = false
 
+    /// 是否正在编辑资料
+    @State private var showEditProfile = false
+
     var body: some View {
         NavigationStack {
             AppPage {
@@ -47,6 +50,18 @@ struct ProfileView: View {
         // 删除是不可撤销的，必须再问一次 —— 而且要说清楚删掉什么、能不能恢复。
         // 这是 App Store 审核指南 5.1.1(v) 的硬性要求：
         // **只要 App 能注册账号，就必须能在 App 内删掉它。**
+        // 环境要显式传进弹窗（这个坑踩过三次了）
+        .task {
+            guard DevFlags.openEditProfile else { return }
+            try? await Task.sleep(for: .seconds(2))
+            showEditProfile = true
+        }
+        .sheet(isPresented: $showEditProfile) {
+            if let account = auth.account {
+                EditProfileSheet(account: account)
+                    .environment(auth)
+            }
+        }
         .confirmationDialog("删除账号和全部数据？",
                             isPresented: $showDeleteAccount, titleVisibility: .visible) {
             Button("永久删除", role: .destructive) {
@@ -69,50 +84,87 @@ struct ProfileView: View {
     // MARK: - 身份
 
     private var identityCard: some View {
-        HStack(spacing: 14) {
-            Avatar(initial: displayInitial, seed: auth.account?.avatarSeed ?? 0, size: 60)
+        // 排版照 Telegram 的「我」页面：
+        //   头像居中 → 名字 → 简介 → 次要信息（邮箱、邀请码）→ 编辑按钮
+        //
+        // 为什么不把邮箱放在名字下面当主信息：
+        // **用户认同的是"我叫什么"，不是"我注册时填了哪个邮箱"**。
+        // 邮箱只是"这台设备上登录的是哪个账号"，该退到次要位置。
+        VStack(spacing: 12) {
+            Avatar(initial: displayInitial, seed: auth.account?.avatarSeed ?? 0, size: 88)
+                .onTapGesture {
+                    Haptics.tap()
+                    showEditProfile = true
+                }
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(spacing: 6) {
                 Text(auth.account?.displayName ?? "未登录")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
 
-                Text(auth.account?.email ?? "还没有登录")
-                    .font(.system(size: 12))
+                Text(bioText)
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(hasBio ? Theme.textSecondary : Theme.textTertiary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 20)
+
+                Text(auth.account?.email ?? "")
+                    .font(.system(size: 11.5))
                     .foregroundStyle(Theme.textTertiary)
                     .lineLimit(1)
-
-                // 邀请码先摆出来。加好友的功能接上服务器就能用，
-                // 但"我的邀请码是什么"这件事现在就该让用户看得到。
-                if let code = auth.account?.inviteCode {
-                    HStack(spacing: 5) {
-                        Image(systemName: "ticket.fill")
-                            .font(.system(size: 10))
-                        Text("邀请码 \(code)")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Theme.accentSoft, in: Capsule())
-                }
             }
 
-            Spacer()
+            HStack(spacing: 8) {
+                if let code = auth.account?.inviteCode {
+                    HStack(spacing: 5) {
+                        Image(systemName: "ticket.fill").font(.system(size: 10))
+                        Text(code)
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    }
+                    .foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Theme.accentSoft, in: Capsule())
+                }
+
+                Button {
+                    Haptics.tap()
+                    showEditProfile = true
+                } label: {
+                    Text("编辑资料")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Theme.accentSoft, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 2)
         }
-        .padding(16)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
         .card()
-        .overlay(alignment: .bottomLeading) {
+        .overlay(alignment: .bottom) {
             // 钥匙串写不进去时（开发构建常见），如实说明。
             // 让用户自己发现"怎么每次都要重新登录"是最差的做法。
             if auth.isSignedIn && !auth.isSessionPersisted {
                 Text("⚠️ 这台设备上没能保存登录状态，下次打开需要重新登录")
                     .font(.system(size: 10.5))
                     .foregroundStyle(Theme.warning)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 5)
             }
         }
+    }
+
+    /// 简介。没写的时候给一句引导，而不是留一片空白
+    private var bioText: String {
+        hasBio ? (auth.account?.bio ?? "") : "点下面的「编辑资料」写一句介绍"
+    }
+
+    private var hasBio: Bool {
+        !(auth.account?.bio ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// 头像上显示那个字

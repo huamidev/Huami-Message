@@ -37,6 +37,25 @@ final class AuthStore {
     /// 登录状态能不能记住（记不住时界面要如实告诉用户）
     var isSessionPersisted: Bool { service.isSessionPersisted }
 
+    /// 改昵称、简介、头像色。
+    func updateProfile(displayName: String, bio: String, avatarSeed: Int) async -> Bool {
+        isWorking = true
+        errorMessage = nil
+        defer { isWorking = false }
+
+        do {
+            account = try await service.updateProfile(displayName: displayName,
+                                                      bio: bio,
+                                                      avatarSeed: avatarSeed)
+            Haptics.success()
+            return true
+        } catch {
+            errorMessage = describe(error)
+            Haptics.warning()
+            return false
+        }
+    }
+
     // MARK: - 从邮件链接跳回来
 
     /// 处理"用户在邮件里点了确认链接，iOS 把 App 打开"这件事。
