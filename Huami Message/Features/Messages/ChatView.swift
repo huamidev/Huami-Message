@@ -57,6 +57,9 @@ struct ChatView: View {
     /// 点了还没做的功能时的说明
     @State private var voiceNotice: String?
 
+    /// 输入框里选中的位置（给「复制」用）
+    @State private var draftSelection: TextSelection?
+
     /// **是否自动分析对方的消息。**
     ///
     /// 【这是整个 App 里最需要想清楚的一个开关】
@@ -162,7 +165,10 @@ struct ChatView: View {
                             ChatToolbar(
                                 hasText: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                                 onCopy: {
-                                    Clipboard.write(draft)
+                                    // **选中了就复制选中的，没选中就复制整个输入框。**
+                                    // 按了复制却什么都不发生，是最让人困惑的。
+                                    let picked = draftSelection?.selectedText(in: draft)
+                                    Clipboard.write(picked ?? draft)
                                     toolsOpen = false
                                 },
                                 onPaste: {
@@ -179,6 +185,10 @@ struct ChatView: View {
                                 },
                                 onPolish: {
                                     toolsOpen = false
+                                    guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                                        voiceNotice = "先在输入框里写点什么，再来改写。"
+                                        return
+                                    }
                                     polishRequest = PolishRequest(original: draft)
                                 }
                             )
@@ -186,6 +196,7 @@ struct ChatView: View {
 
                         ChatInputBar(
                             text: $draft,
+                            selection: $draftSelection,
                             toolsOpen: toolsOpen,
                             onToggleTools: {
                                 withAnimation(.snappy(duration: 0.24)) {

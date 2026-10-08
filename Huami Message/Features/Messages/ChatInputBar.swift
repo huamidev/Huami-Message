@@ -25,6 +25,13 @@ struct ChatInputBar: View {
 
     @Binding var text: String
 
+    /// 输入框里光标/选中的位置。
+    ///
+    /// 有了它，「复制」才知道用户是选中了一部分、还是什么都没选。
+    /// **没选中的时候就复制整个输入框** —— 这是用户明确要的行为，
+    /// 也是更符合直觉的：按了复制却什么都不发生，最让人困惑。
+    @Binding var selection: TextSelection?
+
     var toolsOpen: Bool
     var onToggleTools: () -> Void
     var onPolish: () -> Void
@@ -80,7 +87,7 @@ struct ChatInputBar: View {
                        size: 26)
             }
 
-            TextField("说点什么…", text: $text, axis: .vertical)
+            TextField("说点什么…", text: $text, selection: $selection, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 16))
                 .lineLimit(1...5)
@@ -134,4 +141,33 @@ struct ChatInputBar: View {
         .buttonStyle(.plain)
         .accessibilityLabel(label)
     }
+}
+
+extension TextSelection {
+    /// 从这段文字里取出**被选中的那部分**。
+    ///
+    /// 没有选中（只是光标停着）时返回 nil —— 调用方据此决定
+    /// "那就复制全部"。
+    func selectedText(in text: String) -> String? {
+        // ⚠️ `indices` 是个**枚举**，而且两个分支给的东西不一样：
+        //     .selection      → 单个 Range（普通的拖选）
+        //     .multiSelection → RangeSet（多光标那种，能有好几段）
+        //
+        // 我第一版把两者当成同一种、直接写 `.ranges`，
+        // 编译报错 "cannot assign value of type 'Range<String.Index>'
+        // to type 'RangeSet<String.Index>'" —— 这才看明白它们不同。
+        switch indices {
+        case .selection(let range):
+            let picked = String(text[range])
+            return picked.isEmpty ? nil : picked
+
+        case .multiSelection(let set):
+            let picked = set.ranges.map { String(text[$0]) }.joined()
+            return picked.isEmpty ? nil : picked
+
+        @unknown default:
+            return nil
+        }
+    }
+
 }

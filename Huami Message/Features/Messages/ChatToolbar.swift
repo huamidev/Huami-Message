@@ -12,7 +12,7 @@ import UIKit
 /// 一排药丸既够点，又不会让消息列表被挤走。
 struct ChatToolbar: View {
 
-    /// 输入框里现在有没有字 —— 决定「复制」「AI 改写」能不能点
+    /// 输入框里现在有没有字（AI 改写要用它判断，但**不影响外观**）
     var hasText: Bool
 
     var onCopy: () -> Void
@@ -23,10 +23,22 @@ struct ChatToolbar: View {
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 9) {
-                pill("复制", "doc.on.doc", enabled: hasText, action: onCopy)
-                pill("粘贴", "doc.on.clipboard", enabled: Clipboard.hasText, action: onPaste)
-                pill("照片", "photo", enabled: true, action: onPhoto)
-                pill("AI 改写", "sparkles", enabled: hasText, action: onPolish)
+                // ⚠️ **四个按钮长得完全一样，不再按"能不能点"变灰。**
+                //
+                // 用户的原话：「其他按钮做成和图片按钮一样的颜色，不用区分」。
+                // 我原来把不可用的那几个调成灰色 —— 本意是提示状态，
+                // 但在一排按钮里，**颜色不一致比"点了没反应"更让人困惑**：
+                // 看起来像坏了、像没做完，而不是像"暂时不能用"。
+                //
+                // 现在的约定：**外观统一，行为自己解释自己** ——
+                // 复制：没选中就复制整个输入框（用户的要求）
+                // 粘贴：剪贴板没东西就什么都不做
+                // 照片：直接开相册
+                // AI 改写：输入框是空的就提示一句先写点什么
+                pill("复制", "doc.on.doc", action: onCopy)
+                pill("粘贴", "doc.on.clipboard", action: onPaste)
+                pill("照片", "photo", action: onPhoto)
+                pill("AI 改写", "sparkles", action: onPolish)
             }
             .padding(.horizontal, 12)
         }
@@ -37,7 +49,6 @@ struct ChatToolbar: View {
 
     private func pill(_ title: String,
                       _ icon: String,
-                      enabled: Bool,
                       action: @escaping () -> Void) -> some View {
         Button {
             Haptics.tap()
@@ -49,7 +60,7 @@ struct ChatToolbar: View {
                 Text(title)
                     .font(.system(size: 14))
             }
-            .foregroundStyle(enabled ? Theme.textPrimary : Theme.textTertiary)
+            .foregroundStyle(Theme.textPrimary)
             .padding(.horizontal, 13)
             .padding(.vertical, 9)
             .background(Theme.surface, in: Capsule())
@@ -57,7 +68,6 @@ struct ChatToolbar: View {
             .shadow(color: .black.opacity(0.05), radius: 4, y: 1)
         }
         .buttonStyle(.plain)
-        .disabled(!enabled)
     }
 }
 
