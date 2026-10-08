@@ -190,8 +190,18 @@ final class SwiftDataLocalStore: LocalStore {
     // MARK: 写
 
     func save(friend: Friend) {
-        // 已经被用户删掉的好友，不能被同步重新拉回来
-        guard !deletedIDs().contains(friend.id) else { return }
+        // ⚠️ 服务器说"我们是好友"，那就**清掉本地的墓碑**。
+        //
+        // 【为什么这样做是安全的】
+        //
+        // 现在**没有任何地方会给"好友"写墓碑了**（见 deleteConversation 的说明）——
+        // 删除好友走的是 forgetFriend，不留墓碑。
+        // 所以这里清掉的只可能是**旧版本留下的**墓碑。
+        //
+        // 不清的话，老数据会把这个人**永远挡在外面**：
+        // 服务器上早就是好友了，本地列表却一直是空的，
+        // 而且没有任何界面能撤销 —— 用户只能卸载重装。
+        removeFriendTombstone(friendID: friend.id)
 
         if let existing = findFriend(friend.id) {
             existing.name = friend.name
@@ -357,10 +367,19 @@ final class SwiftDataLocalStore: LocalStore {
             context.delete(message)
             addTombstone(message.id, kind: "message")
         }
-        if let friend = findFriend(friendID) {
-            context.delete(friend)
-            addTombstone(friendID, kind: "friend")   // ← 最关键：挡住同步把它拉回来
-        }
+        // ⚠️ **这里不删好友，也不给好友留墓碑。**
+        //
+        // 原来是"连好友一起删 + 留墓碑挡住同步"，看着像"删干净了"，
+        // 实际后果很严重：
+        //   用户左滑「删除聊天」→ 这个人从**联系人里也消失了**，
+        //   而且墓碑会挡住**后面所有把他加回来的尝试** ——
+        //   包括他发好友申请、你点同意（服务器上都成好友了，本地还是空的）。
+        //
+        // 用户报的"同意了申请，联系人里还是没有"就是这个。
+        //
+        // 「删除聊天」和「删除好友」是两件事：
+        //   这里          = 只清记录，人还在
+        //   removeFriend = 解除关系（走 forgetFriend，不留墓碑）
         // 注意：举报记录**故意保留**。
         // 它是"发生过什么"的凭证，不该因为用户删了会话就一起消失。
         commit()
@@ -488,6 +507,17 @@ final class SwiftDataLocalStore: LocalStore {
 
     /// 记下"这个 id 被删了"。
     /// 已经记过就不重复记 —— 墓碑表不该因为用户反复删同一件事而膨胀。
+    /// 只清"好友"这一类墓碑，留下消息的。
+    ///
+    /// 为什么要分类清：清掉消息墓碑会让"我删掉的聊天记录"被同步拉回来。
+    /// 而好友墓碑现在根本不该存在（没人写它了），清掉只会修复老数据。
+    private func removeFriendTombstone(friendID: UUID) {
+        for tombstone in fetchAll(StoredTombstone.self)
+        where tombstone.targetID == friendID && tombstone.kindRaw == "friend" {
+            context.delete(tombstone)
+        }
+    }
+
     private func addTombstone(_ id: UUID, kind: String) {
         guard !deletedIDs().contains(id) else { return }
         context.insert(StoredTombstone(targetID: id, kindRaw: kind))

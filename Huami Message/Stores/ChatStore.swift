@@ -443,7 +443,15 @@ final class ChatStore {
     /// 宁可删失败时明确报错，也不要"看起来删了其实没删"。
     func removeFriend(_ friendID: Friend.ID) async throws {
         try await remote.removeFriend(friendID)
-        deleteConversation(friendID)
+
+        // ⚠️ 用 forgetFriend（**不留墓碑**），不用 deleteConversation。
+        //
+        // 服务器上已经删掉了，本地跟着删就行。
+        // 留墓碑的话，对方以后再加你、你点同意，本地会被墓碑挡住 ——
+        // 服务器上成了好友，列表里却是空的。
+        local.forgetFriend(friendID: friendID)
+        conversations.removeAll { $0.friend.id == friendID }
+        messagesByFriend[friendID] = nil
         Haptics.success()
     }
 

@@ -26,23 +26,10 @@ struct RootView: View {
     /// 让每个页面自己造数据库，迟早会出现"两个页面看的数据不一样"的怪问题。
     let store: ChatStore
 
-    /// 四个页签。
-    ///
-    /// 顺序：消息 / 联系人 / 我 / 搜索。
-    /// 搜索**固定在最右边** —— 用户会闭着眼睛去点，位置定了就别动。
-    ///
-    /// 【为什么把"搜索"单独拎出来】
-    ///
-    /// 放在消息页顶上时，搜索框会**一直占着一条**，而它大部分时候是空着的。
-    /// 独立成一页之后，进来就是全屏的结果列表，不用在列表和结果之间来回切。
-    ///
-    /// 【为什么有"联系人"而不是把加好友留在消息页】
-    ///
-    /// 加好友是"维护关系"的动作，不是"看消息"的动作。
-    /// 消息页应该只有"最近聊过的人"。
-    enum AppTab { case messages, search, contacts, profile }
-
     @State private var selection: AppTab = RootView.initialTab
+
+    /// 自己画的外壳状态（目前只有「聊天页要藏底栏」这一件事）
+    @State private var chrome = ChromeState()
 
     /// App 是在前台还是后台。
     ///
@@ -91,20 +78,31 @@ struct RootView: View {
         // 注意：这里**没有**放 AppBackground()。
         // 背景放在每个页面内部（见 Design/AppPage.swift 里的说明）——
         // 放在这里会被 TabView 自己的不透明背景盖住，一点都看不见。
+        // 用 ZStack 把「内容」和「我们自己画的底栏」叠起来。
+        //
+        // 系统底栏用 .toolbar(.hidden, for: .tabBar) 藏掉，
+        // 但 **TabView 还是留着管内容切换**（视图状态、滚动位置都不丢），
+        // 只是不让它画那条栏。
+        ZStack(alignment: .bottom) {
         TabView(selection: $selection) {
             Tab("消息", systemImage: "bubble.left.and.bubble.right.fill",
                 value: AppTab.messages) {
+                // ⚠️ 藏系统底栏这个修饰符**必须挂在每个页签的内容上**，
+                //    挂在 TabView 上是不生效的 —— 我试过，结果是两条底栏一起出现。
                 ConversationListView()
+                    .toolbar(.hidden, for: .tabBar)
             }
 
             Tab("联系人", systemImage: "person.2.fill",
                 value: AppTab.contacts) {
                 ContactsView()
+                    .toolbar(.hidden, for: .tabBar)
             }
 
             Tab("我", systemImage: "person.crop.circle.fill",
                 value: AppTab.profile) {
                 ProfileView()
+                    .toolbar(.hidden, for: .tabBar)
             }
 
             // ⚠️ 关键：`role: .search`
@@ -121,12 +119,31 @@ struct RootView: View {
             Tab("搜索", systemImage: "magnifyingglass",
                 value: AppTab.search, role: .search) {
                 SearchView()
+                    .toolbar(.hidden, for: .tabBar)
             }
         }
         .tint(Theme.accent)
+
+        // 我们自己画的底栏。
+        //
+        // 聊天页会把它藏起来（chrome.hidesTabBar），而且这里挂了 transition ——
+        // **进出聊天页时它是滑走的，不是啪地消失**。这正是系统底栏做不到的那件事。
+        if !chrome.hidesTabBar {
+            AppTabBar(
+                selection: $selection,
+                onSearch: {
+                    withAnimation(.snappy(duration: 0.22)) { selection = .search }
+                },
+                searchActive: selection == .search
+            )
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+        }
+        .animation(.snappy(duration: 0.3), value: chrome.hidesTabBar)
         // 把数据管家交给下面所有页面
         .environment(store)
         .environment(auth)
+        .environment(chrome)
         // 只做浅色一套配色。
         // 这是个刻意的取舍：一套配色能省掉将近一半的界面工作量，
         // 而且浅色更像 TIM 那种"办公软件"的感觉。
