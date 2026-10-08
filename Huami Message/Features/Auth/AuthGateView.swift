@@ -65,6 +65,12 @@ struct AuthGateView: View {
         // 只是如果注定失败，旁边会告诉他为什么。
         .task {
             serverIssues = await AppServices.runServerDiagnostics()
+
+            // 开发自检：把光标放到邮箱框，好截图看键盘
+            if DevFlags.focusEmail {
+                try? await Task.sleep(for: .seconds(1))
+                focus = .email
+            }
         }
         .alert("找回密码", isPresented: $showResetHint) {
             Button("知道了") {}
@@ -177,10 +183,24 @@ struct AuthGateView: View {
         VStack(spacing: 0) {
             fieldRow(icon: "envelope.fill") {
                 TextField("邮箱", text: $email)
-                    .keyboardType(.emailAddress)
-                    .textContentType(.emailAddress)
-                    .textInputAutocapitalization(.never)   // 邮箱不会有大写开头的道理
-                    .autocorrectionDisabled()
+                    // ⚠️ **不要在这里改键盘。**
+                    //
+                    // 我原来写了三行，每一行都会让键盘"变得不像用户自己的"：
+                    //
+                    //   .keyboardType(.emailAddress)   强制换成邮箱键盘 ——
+                    //       中文输入法（用户常用的官方 26 键）会被直接顶掉，
+                    //       用户看到的就是一个陌生的英文键盘。
+                    //   .autocorrectionDisabled()      关掉自动更正 ——
+                    //       连**中文候选词条**也一起消失了，
+                    //       对用拼音的人来说这键盘完全不认识了。
+                    //
+                    // 结论：用系统默认的就行。用户平时怎么打字，这里就怎么打字。
+                    // 邮箱里的大写和空格问题，交给下面的校验去挡，不靠键盘限制。
+                    .textContentType(.emailAddress)        // 只是为了自动填充，不改键盘
+                    .textInputAutocapitalization(.never)   // 只影响行为，不影响键盘长相
+                    .submitLabel(.next)
+                    .focused($focus, equals: .email)
+                    .onSubmit { focus = .password }
                     .focused($focus, equals: .email)
                     .submitLabel(.next)
                     .onSubmit { focus = .password }
@@ -208,7 +228,8 @@ struct AuthGateView: View {
                 HairLine()
                 fieldRow(icon: "lock.rotation") {
                     SecureField("再输一遍密码", text: $confirmPassword)
-                        .textContentType(.newPassword)
+                        // 不写 .newPassword —— 它会弹出 iOS 的"强密码建议"面板，
+                        // 把键盘区域整个盖住，用户会觉得键盘被换掉了。
                         .focused($focus, equals: .confirm)
                         .submitLabel(.done)
                         .onSubmit(submit)
@@ -239,7 +260,9 @@ struct AuthGateView: View {
                 .onSubmit { mode == .signIn ? submit() : (focus = .confirm) }
         } else {
             SecureField("密码", text: $password)
-                .textContentType(mode == .signIn ? .password : .newPassword)
+                // 统一用 .password：它会提供密码自动填充（有用），
+                // 但不会像 .newPassword 那样弹面板占掉键盘。
+                .textContentType(.password)
                 .focused($focus, equals: .password)
                 .submitLabel(mode == .signIn ? .go : .next)
                 .onSubmit { mode == .signIn ? submit() : (focus = .confirm) }

@@ -2,19 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!--
-	  注册 huami:// 这个网址方案。
-
-	  作用：用户在邮件里点「确认邮箱」之后，Supabase 验证完会把他
-	  跳转回 huami://confirm，iOS 看到这个方案就会**打开我们的 App**。
-
-	  为什么必须写在这个文件里：
-	  URL 方案在 Info.plist 里是一个"数组里套字典"的结构，
-	  没法用 GENERATE_INFOPLIST_FILE 那种 INFOPLIST_KEY_xxx 的形式表达。
-
-	  注意：这里**只放这一个键**。其他键（版本号、显示名、方向……）
-	  仍然由 Xcode 自动生成，两者会合并。
-	-->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

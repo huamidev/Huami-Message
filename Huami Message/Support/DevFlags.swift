@@ -98,6 +98,12 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "devSignOut")
     }
 
+    /// 启动时自动把光标放到邮箱框 —— 用来截图确认键盘长什么样。
+    /// （截图没法点输入框，不这样键盘根本不出来。）
+    static var focusEmail: Bool {
+        UserDefaults.standard.bool(forKey: "focusEmail")
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")
