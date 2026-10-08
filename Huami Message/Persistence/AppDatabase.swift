@@ -17,7 +17,9 @@ enum AppDatabase {
         do {
             return try ModelContainer(
                 for: StoredFriend.self,
-                StoredMessage.self
+                StoredMessage.self,
+                StoredReport.self,
+                StoredTombstone.self
             )
         } catch {
             print("⚠️ 本地数据库创建失败，退化成内存模式（数据重启后会丢）：", error)
@@ -25,6 +27,8 @@ enum AppDatabase {
                 return try ModelContainer(
                     for: StoredFriend.self,
                     StoredMessage.self,
+                    StoredReport.self,
+                    StoredTombstone.self,
                     configurations: ModelConfiguration(isStoredInMemoryOnly: true)
                 )
             } catch {

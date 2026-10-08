@@ -44,6 +44,30 @@ protocol LocalStore {
 
     /// 更新未读数
     func setUnread(_ count: Int, for friendID: Friend.ID)
+
+    // MARK: 用户对自己数据的控制
+    //
+    // 这一组方法是 App Store 审核和用户信任的**共同要求**：
+    // 用户必须能删掉自己的数据，也必须能把讨厌的人挡住。
+    // 一个删不掉聊天记录的聊天 App，是过不了审核的。
+
+    /// 删除一整个会话（连同里面的所有消息）
+    func deleteConversation(friendID: Friend.ID)
+
+    /// 只清空聊天记录，保留好友
+    func clearMessages(with friendID: Friend.ID)
+
+    /// 删除单条消息
+    func deleteMessage(id: Message.ID)
+
+    /// 拉黑 / 取消拉黑
+    func setBlocked(_ blocked: Bool, for friendID: Friend.ID)
+
+    /// 记下一条举报
+    func saveReport(_ report: Report)
+
+    /// 读出某个好友的举报记录（用来告诉用户"你已经举报过了"）
+    func reports(for friendID: Friend.ID) -> [Report]
 }
 
 // MARK: - SwiftData 版实现
@@ -71,7 +95,8 @@ final class SwiftDataLocalStore: LocalStore {
                     friend: stored.asFriend,
                     lastMessage: last?.text ?? "",
                     lastTime: last?.sentAt ?? .distantPast,
-                    unreadCount: stored.unreadCount
+                    unreadCount: stored.unreadCount,
+                    isBlocked: stored.isBlocked
                 )
             }
             // 最近说话的排最前面
@@ -93,6 +118,9 @@ final class SwiftDataLocalStore: LocalStore {
     // MARK: 写
 
     func save(friend: Friend) {
+        // 已经被用户删掉的好友，不能被同步重新拉回来
+        guard !isDeleted(friend.id) else { return }
+
         // 先找有没有同一个好友：有就更新，没有才新建。
         // 这个动作习惯上叫 "upsert"。
         if let existing = fetchAll(StoredFriend.self).first(where: { $0.id == friend.id }) {
@@ -117,6 +145,10 @@ final class SwiftDataLocalStore: LocalStore {
     /// - Parameter protectingLocalPending:
     ///   true 表示这条数据来自服务器，遇到"本地还在发送中/发送失败"的消息要让路。
     private func merge(_ message: Message, protectingLocalPending: Bool) {
+        // ① 这条消息本身被删过 / 它所属的好友被删过 —— 都不能再进来。
+        //    没有这两行，用户删掉的会话会被后台同步"复活"（我踩过）。
+        guard !isDeleted(message.id), !isDeleted(message.friendID) else { return }
+
         if let existing = fetchAll(StoredMessage.self).first(where: { $0.id == message.id }) {
 
             if protectingLocalPending,
@@ -140,6 +172,63 @@ final class SwiftDataLocalStore: LocalStore {
         guard let friend = fetchAll(StoredFriend.self).first(where: { $0.id == friendID }) else { return }
         friend.unreadCount = count
         commit()
+    }
+
+    // MARK: 删除与拉黑
+
+    func deleteConversation(friendID: Friend.ID) {
+        // 先删消息，再删好友 —— 顺序不能反。
+        // 反过来的话，删掉好友之后就找不到"哪些消息属于他"了，
+        // 会在数据库里留下永远删不掉的垃圾数据。
+        for message in fetchAll(StoredMessage.self).filter({ $0.friendID == friendID }) {
+            context.delete(message)
+            addTombstone(message.id, kind: "message")
+        }
+        for friend in fetchAll(StoredFriend.self).filter({ $0.id == friendID }) {
+            context.delete(friend)
+            addTombstone(friend.id, kind: "friend")   // ← 这条最关键：挡住同步把它拉回来
+        }
+        // 注意：举报记录**故意保留**。
+        // 它是"发生过什么"的凭证，不该因为用户删了会话就一起消失。
+        commit()
+    }
+
+    func clearMessages(with friendID: Friend.ID) {
+        for message in fetchAll(StoredMessage.self).filter({ $0.friendID == friendID }) {
+            context.delete(message)
+            addTombstone(message.id, kind: "message")
+        }
+        // 聊天记录都清了，"未读"也就没有意义了
+        if let friend = fetchAll(StoredFriend.self).first(where: { $0.id == friendID }) {
+            friend.unreadCount = 0
+        }
+        commit()
+    }
+
+    func deleteMessage(id: Message.ID) {
+        for message in fetchAll(StoredMessage.self).filter({ $0.id == id }) {
+            context.delete(message)
+            addTombstone(message.id, kind: "message")
+        }
+        commit()
+    }
+
+    func setBlocked(_ blocked: Bool, for friendID: Friend.ID) {
+        guard let friend = fetchAll(StoredFriend.self).first(where: { $0.id == friendID }) else { return }
+        friend.isBlocked = blocked
+        commit()
+    }
+
+    func saveReport(_ report: Report) {
+        context.insert(StoredReport(from: report))
+        commit()
+    }
+
+    func reports(for friendID: Friend.ID) -> [Report] {
+        fetchAll(StoredReport.self)
+            .filter { $0.friendID == friendID }
+            .sorted { $0.createdAt > $1.createdAt }
+            .map(\.asReport)
     }
 
     // MARK: 内部
@@ -166,5 +255,19 @@ final class SwiftDataLocalStore: LocalStore {
             .filter { $0.friendID == friendID }
             .max { $0.sentAt < $1.sentAt }?
             .asMessage
+    }
+
+    // MARK: 墓碑（删除记录）
+
+    /// 这个 id 是不是被用户删过
+    private func isDeleted(_ id: UUID) -> Bool {
+        fetchAll(StoredTombstone.self).contains { $0.targetID == id }
+    }
+
+    /// 记下"这个 id 被删了"。
+    /// 已经记过就不重复记 —— 墓碑表不该因为用户反复删同一件事而膨胀。
+    private func addTombstone(_ id: UUID, kind: String) {
+        guard !isDeleted(id) else { return }
+        context.insert(StoredTombstone(targetID: id, kindRaw: kind))
     }
 }

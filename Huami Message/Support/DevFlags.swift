@@ -52,4 +52,19 @@ enum DevFlags {
     static var failSend: Bool {
         UserDefaults.standard.bool(forKey: "failSend")
     }
+
+    /// 进入会话后自动把这个好友拉黑（用来验证拉黑状态和提示条）
+    static var blockChat: Bool {
+        UserDefaults.standard.bool(forKey: "blockChat")
+    }
+
+    /// 进入会话后自动打开举报面板（用来验证举报流程）
+    static var openReport: Bool {
+        UserDefaults.standard.bool(forKey: "openReport")
+    }
+
+    /// 进入会话后自动删除这个会话（用来验证删除不会留下孤儿数据）
+    static var devDeleteChat: Bool {
+        UserDefaults.standard.bool(forKey: "devDeleteChat")
+    }
 }

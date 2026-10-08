@@ -14,28 +14,23 @@ struct ChatView: View {
     /// 让用户清楚地知道自己发出去的不是原话。
     @State private var polishedWith: PolishStyle?
 
-    /// 要润色的原文 + 弹窗的"开关"，打包成一个整体。
-    ///
-    /// 为什么要这么绕？我踩过坑：
-    /// 原来写的是 `.sheet(isPresented: $showPolishSheet) { PolishSheet(original: draft) }`，
-    /// 结果弹出来的面板里原文是**空的** —— 内容闭包读到的是过期的 draft。
-    ///
-    /// 改成 `.sheet(item:)` 之后，原文作为"这一份请求"的数据一起被带进去，
-    /// 值的来源就唯一了，不依赖任何读取时机。
-    ///
-    /// 这是个通用经验：**要传给弹窗的数据，应该和"打开弹窗"这个动作绑在一起，
-    /// 而不是让弹窗自己在某个时刻去读外面的状态。**
-    private struct PolishRequest: Identifiable {
-        let id = UUID()
-        let original: String
-    }
-
+    /// 要传给润色面板的数据。
+    /// 见下面 PolishRequest 的说明：为什么不能直接让面板去读 draft。
     @State private var polishRequest: PolishRequest?
+
+    @State private var showReportSheet = false
+    @State private var showClearConfirm = false
 
     /// 滚动用的锚点。它不是给用户看的，只是给代码一个「滚到这里」的坐标。
     private let bottomAnchor = "bottom"
 
     private var messages: [Message] { store.messages(with: conversation.friend.id) }
+
+    /// 加工成「带日期分隔条」的列表
+    private var items: [ChatItem] { ChatItem.build(from: messages) }
+
+    /// 拉黑状态直接问 store，而不是读 conversation 里那份可能过期的副本
+    private var isBlocked: Bool { store.isBlocked(conversation.friend.id) }
 
     var body: some View {
         ZStack {
@@ -59,6 +54,12 @@ struct ChatView: View {
         // 会透出一层模糊的颜色在动。这种「边缘也在呼吸」的细节很值钱。
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { manageMenu }
+        }
+        .safeAreaInset(edge: .top) {
+            if isBlocked { blockedBanner }
+        }
         .sheet(item: $polishRequest) { request in
             PolishSheet(original: request.original) { picked, style in
                 // 选中的版本只是**填回输入框**，不会自动发出去。
@@ -68,9 +69,25 @@ struct ChatView: View {
                 polishedWith = style
             }
             .presentationDetents([.medium, .large])
-            // 让弹窗本身就是一块毛玻璃，而不是一块死白/死黑的板子
             .presentationBackground(.regularMaterial)
             .presentationCornerRadius(30)
+        }
+        .sheet(isPresented: $showReportSheet) {
+            ReportSheet(friend: conversation.friend) { reason, note in
+                store.report(conversation.friend.id, reason: reason, note: note)
+            }
+            .presentationBackground(.regularMaterial)
+            .presentationCornerRadius(30)
+        }
+        // 删除是不可撤销的，必须再问一次 —— 这是"防手滑"的基本礼貌
+        .confirmationDialog("清空和 \(conversation.friend.name) 的聊天记录？",
+                            isPresented: $showClearConfirm, titleVisibility: .visible) {
+            Button("清空聊天记录", role: .destructive) {
+                withAnimation(.snappy) { store.clearMessages(with: conversation.friend.id) }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("消息会从你的手机上永久删除，无法恢复。")
         }
         .onAppear {
             store.markRead(conversation.friend.id)
@@ -87,6 +104,21 @@ struct ChatView: View {
                 polishRequest = PolishRequest(original: demo)
             }
 
+            if DevFlags.blockChat {
+                store.setBlocked(true, for: conversation.friend.id)
+            }
+
+            if DevFlags.openReport {
+                showReportSheet = true
+            }
+
+            // 危险操作的自检：删除整个会话。
+            // 删除是 SwiftData 最容易出问题的地方（比如把好友删了、
+            // 消息却留在库里变成永远看不见的垃圾数据），所以它必须被真的测一遍。
+            if DevFlags.devDeleteChat {
+                store.deleteConversation(conversation.friend.id)
+            }
+
             if DevFlags.autoSend {
                 // 带上时间戳，这样重启后能一眼认出"这条是上一次发的"，
                 // 用来验证消息真的存进了本地数据库。
@@ -96,18 +128,89 @@ struct ChatView: View {
         }
     }
 
+    // MARK: - 右上角的管理菜单
+    //
+    // 拉黑和举报放在这里，而不是藏在"设置 → 隐私 → 更多"里。
+    // 审核和用户都需要能在**两步之内**找到它们。
+
+    private var manageMenu: some View {
+        Menu {
+            Button {
+                withAnimation(.snappy) {
+                    store.setBlocked(!isBlocked, for: conversation.friend.id)
+                }
+            } label: {
+                Label(isBlocked ? "取消拉黑" : "拉黑",
+                      systemImage: isBlocked ? "hand.raised.slash" : "hand.raised")
+            }
+
+            Button {
+                showReportSheet = true
+            } label: {
+                Label("举报", systemImage: "exclamationmark.bubble")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                showClearConfirm = true
+            } label: {
+                Label("清空聊天记录", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+    }
+
+    /// 拉黑之后的提示条。
+    /// 必须让用户**一直看得见**自己被拉黑状态，否则他会奇怪"为什么对方不理我"。
+    private var blockedBanner: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "hand.raised.fill")
+                .font(.system(size: 12))
+            Text("已拉黑 \(conversation.friend.name)，你不会再收到他的消息")
+                .font(.system(size: 12, weight: .medium))
+            Spacer()
+            Button("取消") {
+                withAnimation(.snappy) {
+                    store.setBlocked(false, for: conversation.friend.id)
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Theme.accent)
+        }
+        .foregroundStyle(Color(red: 1.0, green: 0.6, blue: 0.6))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(.white.opacity(0.08)).frame(height: 0.8)
+        }
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+
     // MARK: - 消息列表
 
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 8) {
-                    ForEach(messages) { message in
-                        MessageBubble(message: message) {
-                            // 点"重试"：把这条重新送出去
-                            Task { await store.retry(message) }
+                    ForEach(items) { item in
+                        switch item {
+                        case .daySeparator(let date):
+                            DaySeparatorView(date: date)
+                                .id(item.id)
+
+                        case .message(let message):
+                            MessageBubble(
+                                message: message,
+                                onRetry: { Task { await store.retry(message) } },
+                                onDelete: {
+                                    withAnimation(.snappy) { store.deleteMessage(message) }
+                                }
+                            )
+                            .id(item.id)
                         }
-                        .id(message.id)
                     }
 
                     // 一个看不见的锚点。滚到它 = 滚到最底部。
@@ -131,6 +234,14 @@ struct ChatView: View {
                     proxy.scrollTo(bottomAnchor, anchor: .bottom)
                 }
             }
+            // 拉黑提示条出现/消失时，聊天区域的高度会变。
+            // 不重新对齐的话，最后一条消息会被输入栏挡住 —— 这个细节很小，
+            // 但"最后一条看不见"是用户一眼就能察觉的毛病。
+            .onChange(of: isBlocked) { _, _ in
+                withAnimation(.snappy(duration: 0.3)) {
+                    proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                }
+            }
         }
     }
 
@@ -151,4 +262,20 @@ struct ChatView: View {
             await store.send(text, to: conversation.friend.id, polishedWith: style)
         }
     }
+}
+
+/// 要润色的原文 + 弹窗的"开关"，打包成一个整体。
+///
+/// 为什么要这么绕？我踩过坑：
+/// 原来写的是 `.sheet(isPresented: $showPolishSheet) { PolishSheet(original: draft) }`，
+/// 结果弹出来的面板里原文是**空的** —— 内容闭包读到的是过期的 draft。
+///
+/// 改成 `.sheet(item:)` 之后，原文作为"这一份请求"的数据一起被带进去，
+/// 值的来源就唯一了，不依赖任何读取时机。
+///
+/// 这是个通用经验：**要传给弹窗的数据，应该和"打开弹窗"这个动作绑在一起，
+/// 而不是让弹窗自己在某个时刻去读外面的状态。**
+struct PolishRequest: Identifiable {
+    let id = UUID()
+    let original: String
 }

@@ -15,6 +15,63 @@ enum MessageStatus: String, Codable, Hashable {
     case failed    // 发送失败：界面上会出现一个可以点的重试按钮
 }
 
+// MARK: - 举报
+
+/// 举报的原因。
+///
+/// 这不是"锦上添花"的功能，而是 App Store 审核指南 1.2 条的**硬性要求**：
+/// 只要 App 里用户之间能互相发消息，就必须提供举报入口。
+/// 没有它，TestFlight 的 Beta 审核就会被拒。
+///
+/// 选项也是照着苹果的常见要求来的：骚扰、色情、暴力、欺诈、垃圾信息。
+enum ReportReason: String, CaseIterable, Identifiable, Codable {
+    case harassment
+    case porn
+    case violence
+    case fraud
+    case spam
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .harassment: "骚扰或辱骂"
+        case .porn:       "色情或低俗内容"
+        case .violence:   "暴力或威胁"
+        case .fraud:      "诈骗或虚假信息"
+        case .spam:       "广告或垃圾信息"
+        case .other:      "其他"
+        }
+    }
+}
+
+/// 一条举报记录。
+///
+/// 现在只存在本地。接上 Supabase 之后，这里会多一步"上报到服务器"。
+/// 先把数据结构定下来，是为了以后不用改界面。
+struct Report: Identifiable, Hashable {
+    let id: UUID
+    var friendID: Friend.ID
+    var reason: ReportReason
+    var note: String
+    var createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        friendID: Friend.ID,
+        reason: ReportReason,
+        note: String = "",
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.friendID = friendID
+        self.reason = reason
+        self.note = note
+        self.createdAt = createdAt
+    }
+}
+
 // MARK: - 好友
 
 /// 一个真实好友。
@@ -107,16 +164,27 @@ struct Conversation: Identifiable, Hashable {
     var lastTime: Date
     var unreadCount: Int
 
+    /// 是否已拉黑这个好友。
+    ///
+    /// 拉黑之后：会话在列表里会被标记、聊天页会显示一条提示、
+    /// 并且**对方再发消息也不会进来**（见 ChatStore.receive）。
+    ///
+    /// 说明：现在的"拒收"是在本地生效的。接上真服务器之后，
+    /// 服务器那边也会一起拦，这样换设备登录也依然是拉黑状态。
+    var isBlocked: Bool
+
     init(
         friend: Friend,
         lastMessage: String,
         lastTime: Date,
-        unreadCount: Int = 0
+        unreadCount: Int = 0,
+        isBlocked: Bool = false
     ) {
         self.friend = friend
         self.lastMessage = lastMessage
         self.lastTime = lastTime
         self.unreadCount = unreadCount
+        self.isBlocked = isBlocked
     }
 
     // 只按 id 判断是不是同一个会话。

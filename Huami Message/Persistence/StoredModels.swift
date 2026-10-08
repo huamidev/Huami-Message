@@ -28,11 +28,20 @@ final class StoredFriend {
     /// 以后做群聊时，这里要拆出一张独立的「会话」表。
     var unreadCount: Int
 
-    init(id: UUID, name: String, avatarSeed: Int, unreadCount: Int = 0) {
+    /// 是否已拉黑。
+    ///
+    /// 注意这里给了默认值 `= false`：给新字段加默认值，
+    /// 数据库在升级结构时可以自动迁移旧数据（旧记录一律当作"没拉黑"），
+    /// 不会因为"多了一个字段"就把老数据全读不出来。
+    /// **这是加数据库字段时的一个好习惯：永远给它一个合理的默认值。**
+    var isBlocked: Bool = false
+
+    init(id: UUID, name: String, avatarSeed: Int, unreadCount: Int = 0, isBlocked: Bool = false) {
         self.id = id
         self.name = name
         self.avatarSeed = avatarSeed
         self.unreadCount = unreadCount
+        self.isBlocked = isBlocked
     }
 
     /// 转成界面用的 struct
@@ -107,5 +116,83 @@ final class StoredMessage {
             polishedWith: polishedStyle.flatMap(PolishStyle.init(rawValue:)),
             status: MessageStatus(rawValue: statusRaw) ?? .sent
         )
+    }
+}
+
+/// 本地数据库里的「举报记录」。
+///
+/// 举报必须**留痕**：审核要看的不只是"有个举报按钮"，
+/// 还要能说明举报之后会发生什么。存下来是最基本的。
+/// 接上服务器之后，这里会多一个"是否已上报"的状态。
+@Model
+final class StoredReport {
+
+    var id: UUID
+    var friendID: UUID
+    var reasonRaw: String
+    var note: String
+    var createdAt: Date
+
+    init(id: UUID, friendID: UUID, reasonRaw: String, note: String, createdAt: Date) {
+        self.id = id
+        self.friendID = friendID
+        self.reasonRaw = reasonRaw
+        self.note = note
+        self.createdAt = createdAt
+    }
+
+    convenience init(from report: Report) {
+        self.init(
+            id: report.id,
+            friendID: report.friendID,
+            reasonRaw: report.reason.rawValue,
+            note: report.note,
+            createdAt: report.createdAt
+        )
+    }
+
+    var asReport: Report {
+        Report(
+            id: id,
+            friendID: friendID,
+            reason: ReportReason(rawValue: reasonRaw) ?? .other,
+            note: note,
+            createdAt: createdAt
+        )
+    }
+}
+
+/// 删除墓碑。
+///
+/// 【为什么删掉的东西还要留一条"我删过它"的记录？】
+///
+/// 这是一个真实的 bug 换来的，而且是本地优先架构里最经典的一类坑：
+///
+/// 用户删掉一个会话 → 后台同步一跑 → **又从服务器把它拉回来了**。
+/// 因为同步根本分不清这两种情况：
+///     · "这台设备从没见过它"      → 应该拉下来
+///     · "用户故意删了它"          → 绝不能拉回来
+///
+/// 解决办法就是**留一条墓碑**：删除不是"抹掉"，而是"记下它被删过"。
+/// 同步时看到墓碑就跳过。
+///
+/// 接上 Supabase 之后，墓碑还要多一个作用：
+/// **把"我删了它"这件事同步到服务器**，否则换台设备登录，删掉的东西又回来了。
+/// （到那时候，等服务器确认删除之后，墓碑才可以清掉 —— 不然会越积越多。）
+@Model
+final class StoredTombstone {
+
+    /// 被删除对象的 id（好友的 id 或消息的 id）
+    var targetID: UUID
+
+    /// 删的是什么："friend" 或 "message"
+    var kindRaw: String
+
+    var deletedAt: Date
+
+    init(targetID: UUID, kindRaw: String, deletedAt: Date = .now) {
+        self.targetID = targetID
+        self.kindRaw = kindRaw
+        self.deletedAt = deletedAt
     }
 }

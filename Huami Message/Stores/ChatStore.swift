@@ -193,13 +193,74 @@ final class ChatStore {
         }
     }
 
+    // MARK: - 用户对自己数据的控制
+
+    /// 删除一整个会话。界面会立刻变化，数据库那边也会真的删掉。
+    func deleteConversation(_ friendID: Friend.ID) {
+        local.deleteConversation(friendID: friendID)
+        conversations.removeAll { $0.friend.id == friendID }
+        messagesByFriend[friendID] = nil
+    }
+
+    /// 清空聊天记录，但保留这个好友
+    func clearMessages(with friendID: Friend.ID) {
+        local.clearMessages(with: friendID)
+        messagesByFriend[friendID] = []
+        guard let index = conversations.firstIndex(where: { $0.friend.id == friendID }) else { return }
+        conversations[index].lastMessage = ""
+        conversations[index].lastTime = .distantPast
+        conversations[index].unreadCount = 0
+    }
+
+    /// 删除单条消息
+    func deleteMessage(_ message: Message) {
+        local.deleteMessage(id: message.id)
+        messagesByFriend[message.friendID]?.removeAll { $0.id == message.id }
+    }
+
+    /// 拉黑 / 取消拉黑。
+    ///
+    /// 拉黑之后本地**立刻生效**两件事：
+    ///   1. 对方再发消息不会进来（见下面的 receive）
+    ///   2. 界面上有明确标记，用户知道自己拉黑了谁
+    ///
+    /// 说明：现在"拒收"是在本地做的。接上服务器后，服务器那边也会一起拦 ——
+    /// 否则用户换台设备登录，拉黑就失效了。
+    func setBlocked(_ blocked: Bool, for friendID: Friend.ID) {
+        local.setBlocked(blocked, for: friendID)
+        guard let index = conversations.firstIndex(where: { $0.friend.id == friendID }) else { return }
+        conversations[index].isBlocked = blocked
+    }
+
+    func isBlocked(_ friendID: Friend.ID) -> Bool {
+        conversations.first(where: { $0.friend.id == friendID })?.isBlocked ?? false
+    }
+
+    /// 举报一个好友。
+    ///
+    /// 现在只是**记在本地**。接上 Supabase 之后，这里会多一步上报到服务器。
+    /// 但界面完全不用改 —— 因为调用它的地方只认这个方法名。
+    func report(_ friendID: Friend.ID, reason: ReportReason, note: String = "") {
+        local.saveReport(Report(friendID: friendID, reason: reason, note: note))
+    }
+
+    /// 这个好友被举报过几次
+    func reportCount(for friendID: Friend.ID) -> Int {
+        local.reports(for: friendID).count
+    }
+
     // MARK: - 未读
 
     /// 进入某个会话时清掉未读小红点
     func markRead(_ friendID: Friend.ID) {
+        setUnread(0, for: friendID)
+    }
+
+    /// 设置未读数（0 = 已读，1 = 手动标记成未读）
+    func setUnread(_ count: Int, for friendID: Friend.ID) {
         guard let index = conversations.firstIndex(where: { $0.friend.id == friendID }) else { return }
-        conversations[index].unreadCount = 0
-        local.setUnread(0, for: friendID)   // 一起写进数据库，重启后不会又冒出来
+        conversations[index].unreadCount = count
+        local.setUnread(count, for: friendID)   // 一起写进数据库，重启后不会又冒出来
     }
 
     // MARK: - 收消息
@@ -217,7 +278,11 @@ final class ChatStore {
     }
 
     private func receive(_ message: Message) {
-        // 去重：同一条消息只存一次（网络偶尔会重复推送，这是必须防的）
+        // ① 已经被拉黑的人，消息直接丢掉 —— 不进数据库，也不进界面。
+        //    这才是"拉黑"真正起作用的地方：只把列表里的会话藏起来是不够的。
+        if isBlocked(message.friendID) { return }
+
+        // ② 去重：同一条消息只存一次（网络偶尔会重复推送，这是必须防的）
         let existing = messagesByFriend[message.friendID] ?? []
         guard !existing.contains(where: { $0.id == message.id }) else { return }
 

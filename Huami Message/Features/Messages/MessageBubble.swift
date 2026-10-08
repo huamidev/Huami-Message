@@ -1,8 +1,9 @@
 import SwiftUI
+import UIKit   // 复制到剪贴板要用 UIPasteboard
 
 /// 一条消息的气泡。
 ///
-/// 三个设计决定值得说明：
+/// 四个设计决定值得说明：
 ///
 /// 1. **我发的和好友发的，用的是两种完全不同的材质。**
 ///    我发的是实心渐变（有分量、有存在感），好友发的是毛玻璃（轻、背后透光）。
@@ -16,12 +17,18 @@ import SwiftUI
 /// 3. **发送状态必须看得见。**
 ///    发送中转圈、失败变红并且能点重试。
 ///    用户永远不该猜"这条到底发出去没有"。
+///
+/// 4. **长按要有菜单。**
+///    复制和删除是最基本的两个动作。少了它们，用户会觉得"这 App 不让我管自己的东西"。
 struct MessageBubble: View {
 
     let message: Message
 
     /// 发送失败时，用户点"重试"会调它
     var onRetry: () -> Void = {}
+
+    /// 长按菜单里点"删除"会调它
+    var onDelete: () -> Void = {}
 
     private var isMine: Bool { message.sender == .me }
 
@@ -42,6 +49,18 @@ struct MessageBubble: View {
                     .opacity(message.status == .sending ? 0.72 : 1)
 
                 metaRow
+            }
+            // 长按气泡 → 弹出操作菜单
+            .contextMenu {
+                Button {
+                    UIPasteboard.general.string = message.text
+                } label: {
+                    Label("复制", systemImage: "doc.on.doc")
+                }
+
+                Button(role: .destructive, action: onDelete) {
+                    Label("删除", systemImage: "trash")
+                }
             }
 
             if !isMine { Spacer(minLength: 56) }

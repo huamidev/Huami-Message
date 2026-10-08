@@ -150,12 +150,14 @@ final class MockChatService: ChatService {
         let now = Date()
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
 
-        // 林一：主要演示对象
+        // 林一：主要演示对象。
+        // 故意让前几句落在**昨天**、最后一句落在**今天**，
+        // 这样聊天页会出现两条日期分隔条（昨天 / 今天），效果一眼可见。
         messages[linYi.id] = [
-            Message(id: Self.seedMessageID(1), friendID: linYi.id, text: "在吗", sender: .friend, sentAt: ago(600)),
-            Message(id: Self.seedMessageID(2), friendID: linYi.id, text: "在，怎么了", sender: .me, sentAt: ago(596)),
-            Message(id: Self.seedMessageID(3), friendID: linYi.id, text: "周五晚上的事，你来吗", sender: .friend, sentAt: ago(595)),
-            Message(id: Self.seedMessageID(4), friendID: linYi.id, text: "应该可以", sender: .me, sentAt: ago(590)),
+            Message(id: Self.seedMessageID(1), friendID: linYi.id, text: "在吗", sender: .friend, sentAt: ago(1500)),
+            Message(id: Self.seedMessageID(2), friendID: linYi.id, text: "在，怎么了", sender: .me, sentAt: ago(1496)),
+            Message(id: Self.seedMessageID(3), friendID: linYi.id, text: "周五晚上的事，你来吗", sender: .friend, sentAt: ago(1495)),
+            Message(id: Self.seedMessageID(4), friendID: linYi.id, text: "应该可以", sender: .me, sentAt: ago(1490)),
             Message(id: Self.seedMessageID(5), friendID: linYi.id, text: "你昨天怎么没来？大家都等你很久了", sender: .friend, sentAt: ago(12)),
         ]
 
