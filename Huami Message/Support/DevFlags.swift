@@ -83,6 +83,15 @@ enum DevFlags {
         UserDefaults.standard.string(forKey: "sendText") ?? ""
     }
 
+    /// 启动时模拟"用户点了邮件里的确认链接"。
+    ///
+    /// 为什么需要它：用 `simctl openurl` 测试时，iOS 会弹一个
+    /// "Open in Huami Message?" 的系统确认框，自动化点不到。
+    /// 这个开关直接调用处理函数，把**跳转之后的逻辑**单独验证掉。
+    static var confirmLink: String {
+        UserDefaults.standard.string(forKey: "confirmLink") ?? ""
+    }
+
     /// 启动时自动打开「加好友」
     static var openAddFriend: Bool {
         UserDefaults.standard.bool(forKey: "openAddFriend")

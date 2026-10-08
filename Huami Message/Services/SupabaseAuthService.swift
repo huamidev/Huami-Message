@@ -57,6 +57,9 @@ final class SupabaseAuthService: AuthService {
         do {
             response = try await client.post(
                 "/auth/v1/signup",
+                // 告诉服务器：用户在邮件里点确认之后，**跳回 App**，不要跳到网页。
+                // 这个地址必须在 Supabase 的 Redirect URLs 白名单里，否则会被忽略。
+                query: [URLQueryItem(name: "redirect_to", value: AppLink.confirmURL)],
                 body: Credentials(email: normalized, password: password),
                 as: AuthResponse.self
             )
@@ -102,6 +105,25 @@ final class SupabaseAuthService: AuthService {
 
         client.setSession(accessToken: token, userID: user.id)
         return try await finishSignIn(user: user, accessToken: token, refreshToken: response.refreshToken)
+    }
+
+    // MARK: - 用邮件链接里的凭证登录
+
+    func adoptSession(accessToken: String, refreshToken: String?) async -> Account? {
+        // 先把凭证装上 —— 接下来的请求要拿它去问服务器"我是谁"。
+        // 注意 userID 先留空：现在还不知道，靠下面的请求问出来。
+        client.setSession(accessToken: accessToken, userID: nil)
+
+        guard let user = try? await client.get("/auth/v1/user", as: AuthUser.self) else {
+            // 凭证无效或过期：清干净，让用户手动登录一次
+            client.setSession(accessToken: nil, userID: nil)
+            return nil
+        }
+
+        client.setSession(accessToken: accessToken, userID: user.id)
+        return try? await finishSignIn(user: user,
+                                       accessToken: accessToken,
+                                       refreshToken: refreshToken)
     }
 
     // MARK: - 退出

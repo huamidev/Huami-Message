@@ -73,6 +73,30 @@ struct RootView: View {
         // 这是个刻意的取舍：一套配色能省掉将近一半的界面工作量，
         // 而且浅色更像 TIM 那种"办公软件"的感觉。
         // 以后要做深色，改 Theme.swift 加一套色值就行，界面不用动。
+        // 用户点邮件里的确认链接 → iOS 打开 App → 这里接住。
+        //
+        // 注意：**这个修饰符必须挂在最外层**，而不是某个子页面里。
+        // 因为链接打开 App 的那一刻，用户可能停在任何界面
+        //（多数时候是登录页，但也可能是已经登录后的某个页面）。
+        .onOpenURL { url in
+            Task { await auth.handleLink(url) }
+        }
+        // 用 overlay 画一条提示，**不用 .alert**。
+        //
+        // 【为什么】
+        // 这个视图上已经挂了一个 .fullScreenCover（登录/条款的闸门）。
+        // SwiftUI 里**同一个视图上挂多个"呈现型"修饰符会互相干扰** ——
+        // 我第一版用 .alert，日志证明代码跑了（handleLink 有输出）、
+        // 但提示根本没显示出来。
+        //
+        // overlay 不参与呈现机制，只是"画在上面"，没有这个问题。
+        .overlay(alignment: .top) {
+            if let message = auth.linkMessage {
+                linkBanner(message)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.3), value: auth.linkMessage)
         .preferredColorScheme(.light)
         // 首次启动必须先同意条款。
         //
@@ -108,6 +132,23 @@ struct RootView: View {
             // 这个坑很典型：**弹窗 / 全屏覆盖的内容，环境要显式传**。
             .environment(store)
             .environment(auth)
+            // ⚠️ 提示条**必须在这里也画一遍**。
+            //
+            // 因为 fullScreenCover 是**另一个层级** —— 主界面上画的任何东西
+            // 都出现在它下面，被完全盖住。
+            //
+            // 而用户点完邮件里的确认链接之后，**绝大多数情况正是停在这一页**
+            //（他刚注册完，还没登录）。只画在主界面上等于没画。
+            //
+            // 这就是我第一版"日志说跑了、界面却什么都没有"的真正原因 ——
+            // 不是代码没执行，是**画错了层**。
+            .overlay(alignment: .top) {
+                if let message = auth.linkMessage {
+                    linkBanner(message)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy(duration: 0.3), value: auth.linkMessage)
             .interactiveDismissDisabled()
         }
         // 开发用：自动建号并登录，省得每次截图都手打。
@@ -140,6 +181,13 @@ struct RootView: View {
             if DevFlags.resetTerms { hasAcceptedTerms = false }
             if DevFlags.acceptTerms { hasAcceptedTerms = true }
 
+            // 开发自检：模拟"点了邮件里的确认链接"
+            AppLog.info(.network, "dev 开关 confirmLink = [\(DevFlags.confirmLink)]")
+            if !DevFlags.confirmLink.isEmpty, let url = URL(string: DevFlags.confirmLink) {
+                try? await Task.sleep(for: .seconds(2))
+                await auth.handleLink(url)
+            }
+
             // 没登录就不同步 —— 服务器不知道该给你什么
             guard auth.isSignedIn else { return }
 
@@ -158,6 +206,57 @@ struct RootView: View {
             if DevFlags.devWipe {
                 try? await Task.sleep(for: .milliseconds(500))
                 store.deleteEverything()
+            }
+        }
+    }
+
+    // MARK: - 邮件链接跳回来的提示
+
+    /// 告诉用户"邮箱验证成功了"。
+    ///
+    /// 用一条会自己消失的提示，而不是弹窗：
+    ///   · 不打断用户（他刚点完链接，多半正想继续登录）
+    ///   · 不强制他做一个"知道了"的动作
+    ///   · 而且躲开了上面说的"多个呈现型修饰符互相干扰"的问题
+    private func linkBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.mint)
+                .padding(.top, 1)
+
+            Text(message)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(Theme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+
+            Button {
+                Haptics.tap()
+                auth.linkMessage = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+                    .padding(4)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(.regularMaterial,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Theme.separator, lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.10), radius: 14, y: 4)
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .onAppear {
+            Task {
+                try? await Task.sleep(for: .seconds(6))
+                withAnimation(.snappy) { auth.linkMessage = nil }
             }
         }
     }

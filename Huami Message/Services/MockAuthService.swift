@@ -84,6 +84,9 @@ final class MockAuthService: AuthService {
         return record.account
     }
 
+    /// 假实现没有邮件链接这回事
+    func adoptSession(accessToken: String, refreshToken: String?) async -> Account? { nil }
+
     // MARK: - 退出
 
     func signOut() async {

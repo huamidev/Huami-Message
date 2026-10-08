@@ -31,8 +31,43 @@ final class AuthStore {
 
     var isSignedIn: Bool { account != nil }
 
+    /// 点邮件里的确认链接跳回来时要告诉用户的话。nil 表示不显示。
+    var linkMessage: String?
+
     /// 登录状态能不能记住（记不住时界面要如实告诉用户）
     var isSessionPersisted: Bool { service.isSessionPersisted }
+
+    // MARK: - 从邮件链接跳回来
+
+    /// 处理"用户在邮件里点了确认链接，iOS 把 App 打开"这件事。
+    ///
+    /// 【两种结果都要处理好】
+    ///
+    /// 链接里**带登录凭证**（通常是这样）→ 直接帮他登录，连密码都不用输。
+    /// 链接里**没有凭证**（或者凭证已经失效）→ 也要告诉他"验证成功了"，
+    ///   让他手动登录一次就行 —— **绝不能让他以为失败又重来一遍注册**。
+    func handleLink(_ url: URL) async {
+        AppLog.info(.network, "handleLink 收到：\(url.absoluteString)（scheme=\(url.scheme ?? "无")）")
+        guard url.scheme == AppLink.scheme else {
+            AppLog.info(.network, "scheme 不匹配，忽略")
+            return
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        if let tokens = AppLink.tokens(from: url),
+           let adopted = await service.adoptSession(accessToken: tokens.access,
+                                                    refreshToken: tokens.refresh) {
+            account = adopted
+            linkMessage = "邮箱验证成功，已经帮你登录了。"
+            Haptics.success()
+            return
+        }
+
+        linkMessage = "邮箱验证成功，现在可以用这个邮箱和密码登录了。"
+        Haptics.success()
+    }
 
     // MARK: - 动作
 

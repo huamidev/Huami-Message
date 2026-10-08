@@ -59,6 +59,13 @@ protocol AuthService {
     /// 退出登录。清掉本地存的会话，服务器那边不用通知。
     func signOut() async
 
+    /// 用邮件链接里带的凭证**直接建立会话**。
+    ///
+    /// 用它的好处：用户点完确认链接回到 App，**不用再输一遍邮箱密码**。
+    /// 返回 nil 表示链接里没有可用凭证 —— 那就退回"手动登录一次"，
+    /// 因为**邮箱本身已经在服务端验证成功了**，不该让他重来一遍。
+    func adoptSession(accessToken: String, refreshToken: String?) async -> Account?
+
     /// 发一封"重置密码"的邮件
     func sendPasswordReset(email: String) async throws
 
