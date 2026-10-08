@@ -161,15 +161,23 @@ final class SupabaseAuthService: AuthService {
             as: [ProfileRow].self
         )
 
-        let updated = Account(
-            id: current.id,
-            email: current.email,
-            displayName: current.displayName,
-            avatarSeed: current.avatarSeed,
-            bio: current.bio,
-            username: rows.first?.username ?? current.username,
-            avatarURL: rows.first?.avatarUrl.flatMap(URL.init(string:)) ?? url
-        )
+        // ⚠️ **从 current 复制一份再改，绝不要重新构造一个。**
+        //
+        // 这三处原来都是 Account(id: current.id, email: current.email, ...)
+        // 把每个字段手写一遍。加新字段时只要漏一个，
+        // 那个字段就会被**默认值悄悄覆盖** —— 编译不报错，界面也不报错，
+        // 只是数据无声无息地没了。
+        //
+        // 这个坑已经踩了三次：
+        //   · 本地库的更新路径漏了 imageURLString —— 图片发出去了，界面是空的
+        //   · ProfileRow 漏了字段
+        //   · updateProfile 漏了 avatarURL —— 换了头像，一保存就没了
+        //
+        // 所以改成「先复制，再改要改的那几个」。
+        // 以后再加字段，这几处一行都不用动，也不可能漏。
+        var updated = current
+        updated.avatarURL = rows.first?.avatarUrl.flatMap(URL.init(string:)) ?? url
+        updated.username = rows.first?.username ?? current.username
         cachedAccount = updated
         if var session = Self.loadSession() {
             session.account = updated
@@ -206,14 +214,22 @@ final class SupabaseAuthService: AuthService {
             throw Self.translateUsernameError(error)
         }
 
-        let updated = Account(
-            id: current.id,
-            email: current.email,
-            displayName: current.displayName,
-            avatarSeed: current.avatarSeed,
-            bio: current.bio,
-            username: rows.first?.username ?? cleaned
-        )
+        // ⚠️ **从 current 复制一份再改，绝不要重新构造一个。**
+        //
+        // 这三处原来都是 Account(id: current.id, email: current.email, ...)
+        // 把每个字段手写一遍。加新字段时只要漏一个，
+        // 那个字段就会被**默认值悄悄覆盖** —— 编译不报错，界面也不报错，
+        // 只是数据无声无息地没了。
+        //
+        // 这个坑已经踩了三次：
+        //   · 本地库的更新路径漏了 imageURLString —— 图片发出去了，界面是空的
+        //   · ProfileRow 漏了字段
+        //   · updateProfile 漏了 avatarURL —— 换了头像，一保存就没了
+        //
+        // 所以改成「先复制，再改要改的那几个」。
+        // 以后再加字段，这几处一行都不用动，也不可能漏。
+        var updated = current
+        updated.username = rows.first?.username ?? cleaned
         cachedAccount = updated
         if var session = Self.loadSession() {
             session.account = updated
@@ -270,14 +286,25 @@ final class SupabaseAuthService: AuthService {
             throw Self.translateProfileError(error)
         }
 
-        let updated = Account(
-            id: current.id,
-            email: current.email,
-            displayName: displayName,
-            avatarSeed: avatarSeed,
-            bio: bio,
-            username: rows.first?.username ?? current.username
-        )
+        // ⚠️ **从 current 复制一份再改，绝不要重新构造一个。**
+        //
+        // 这三处原来都是 Account(id: current.id, email: current.email, ...)
+        // 把每个字段手写一遍。加新字段时只要漏一个，
+        // 那个字段就会被**默认值悄悄覆盖** —— 编译不报错，界面也不报错，
+        // 只是数据无声无息地没了。
+        //
+        // 这个坑已经踩了三次：
+        //   · 本地库的更新路径漏了 imageURLString —— 图片发出去了，界面是空的
+        //   · ProfileRow 漏了字段
+        //   · updateProfile 漏了 avatarURL —— 换了头像，一保存就没了
+        //
+        // 所以改成「先复制，再改要改的那几个」。
+        // 以后再加字段，这几处一行都不用动，也不可能漏。
+        var updated = current
+        updated.displayName = displayName
+        updated.bio = bio
+        updated.avatarSeed = avatarSeed
+        updated.username = rows.first?.username ?? current.username
 
         cachedAccount = updated
 

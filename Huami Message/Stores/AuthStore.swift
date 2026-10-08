@@ -84,6 +84,10 @@ final class AuthStore {
             account = try await service.updateProfile(displayName: displayName,
                                                       bio: bio,
                                                       avatarSeed: avatarSeed)
+            // 开发排查：保存资料之后头像还在不在。
+            // 这里踩过一个坑：updateProfile 重建 Account 时漏了 avatarURL，
+            // 于是「换了头像，一保存就没了」。
+            AppLog.info(.data, "保存资料后 avatarURL = \(account?.avatarURL?.absoluteString ?? "（空）")")
             Haptics.success()
             return true
         } catch {

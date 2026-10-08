@@ -294,6 +294,12 @@ struct RootView: View {
                     AppLog.info(.data, "测试头像压缩后 \(data.count) 字节")
                     if let url = try? await AppServices.uploadAvatar(data) {
                         _ = await auth.updateAvatar(url)
+                        // 再走一遍「保存资料」—— 这一步以前会把头像冲掉
+                        if let me = auth.account {
+                            _ = await auth.updateProfile(displayName: me.displayName,
+                                                         bio: me.bio,
+                                                         avatarSeed: me.avatarSeed)
+                        }
                     }
                 }
             }
