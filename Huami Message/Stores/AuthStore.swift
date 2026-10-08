@@ -23,13 +23,16 @@ final class AuthStore {
 
     private let service: AuthService
 
-    init(service: AuthService = MockAuthService()) {
+    init(service: AuthService = AppServices.makeAuthService()) {
         self.service = service
         // 启动时同步读一次本地会话 —— 上次登录过就直接进去，不用再输一遍密码
         self.account = service.currentAccount()
     }
 
     var isSignedIn: Bool { account != nil }
+
+    /// 登录状态能不能记住（记不住时界面要如实告诉用户）
+    var isSessionPersisted: Bool { service.isSessionPersisted }
 
     // MARK: - 动作
 

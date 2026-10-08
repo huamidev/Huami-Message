@@ -102,6 +102,17 @@ struct ProfileView: View {
         }
         .padding(16)
         .card()
+        .overlay(alignment: .bottomLeading) {
+            // 钥匙串写不进去时（开发构建常见），如实说明。
+            // 让用户自己发现"怎么每次都要重新登录"是最差的做法。
+            if auth.isSignedIn && !auth.isSessionPersisted {
+                Text("⚠️ 这台设备上没能保存登录状态，下次打开需要重新登录")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Theme.warning)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+            }
+        }
     }
 
     /// 头像上显示那个字
@@ -122,9 +133,9 @@ struct ProfileView: View {
             )
             privacyRow(
                 "小助手会看到什么",
-                "只有你主动点开小助手、并再点一次「帮我看看怎么回」时，"
+                "只有你主动点小助手的那几个选项时，"
                 + "才会把最近 10 条消息发给 AI 服务商。"
-                + "发送前会把你将要发出的内容原样显示出来，你不点就不会发送。"
+                + "选项上方一直标明会发生什么，判断结果里也会列出本次实际发送了多少条。你不点就不会发送。"
             )
             privacyRow(
                 "聊天记录",

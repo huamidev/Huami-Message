@@ -61,6 +61,21 @@ protocol AuthService {
 
     /// 发一封"重置密码"的邮件
     func sendPasswordReset(email: String) async throws
+
+    /// **能不能在这台设备上记住登录状态。**
+    ///
+    /// 正常情况当然是能。但登录凭证是存在系统钥匙串里的，
+    /// 而钥匙串在某些环境下会写不进去（比如没有正确签名的开发构建，
+    /// 会返回 -34018 缺少权限）。
+    ///
+    /// 遇到那种情况，App 照样能用，只是**每次打开都要重新登录**。
+    /// 与其让用户莫名其妙，不如把这件事说出来。
+    var isSessionPersisted: Bool { get }
+}
+
+extension AuthService {
+    /// 默认能记住。真正会失败的实现自己覆盖这一条。
+    var isSessionPersisted: Bool { true }
 }
 
 // ============================================================================
@@ -82,6 +97,7 @@ enum AuthError: LocalizedError, Equatable {
     case weakPassword
     case passwordMismatch
     case emailAlreadyUsed
+    case emailConfirmationRequired
     case wrongCredentials
     case network
     case notSignedIn
@@ -93,6 +109,8 @@ enum AuthError: LocalizedError, Equatable {
         case .weakPassword:      "密码至少要 8 位，建议字母加数字。"
         case .passwordMismatch:  "两次输入的密码不一样。"
         case .emailAlreadyUsed:  "这个邮箱已经注册过了，直接登录就行。"
+        case .emailConfirmationRequired:
+            "注册成功了。请去邮箱点一下确认链接，然后回来登录。"
         case .wrongCredentials:  "邮箱或密码不对。"
         case .network:           "网络好像不太顺，等一下再试。"
         case .notSignedIn:       "你还没有登录。"

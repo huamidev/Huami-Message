@@ -39,7 +39,7 @@ final class ChatStore {
 
     private var listenTask: Task<Void, Never>?
 
-    init(local: LocalStore, remote: ChatService = MockChatService()) {
+    init(local: LocalStore, remote: ChatService = AppServices.makeChatService()) {
         self.local = local
         self.remote = remote
     }

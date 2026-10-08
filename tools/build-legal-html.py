@@ -159,6 +159,26 @@ def render(sections) -> str:
     return "\n".join(out)
 
 
+
+def assert_no_gaps(html: str, label: str) -> None:
+    """检查生成的正文里有没有"被截断留下的空洞"。
+
+    【为什么要这个检查】
+
+    我两次在 Swift 字符串里误用了 ASCII 双引号（中文里应该用「」），
+    结果字符串被从中间截断。**编译器能抓到**，但生成器在编译之前就跑了 ——
+    于是它会先安静地产出一个"中间缺一块"的网页，看起来还挺正常。
+
+    这个检查就是在那之前拦住：中文之间出现连续 4 个以上空格，
+    基本就是截断留下的痕迹（正常排版不会这么干）。
+    """
+    import re as _re
+    plain = _re.sub(r"<[^>]+>", " ", html)
+    gaps = _re.findall(r"[\u4e00-\u9fff][ \t]{4,}[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]", plain)
+    if gaps:
+        raise SystemExit(f"❌ {label} 里有 {len(gaps)} 处断裂：{gaps[:3]}\n"
+                         f"   检查 LegalText.swift 里是不是有 ASCII 双引号混进了中文字符串")
+
 def main():
     source = SOURCE.read_text(encoding="utf-8")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -169,6 +189,7 @@ def main():
             raise SystemExit(f"❌ 没能从 {SOURCE.name} 里解析出 {name}")
         html_text = PAGE.format(title=title, sections=render(sections))
         path = OUT_DIR / f"{slug}.html"
+        assert_no_gaps(html_text, path.name)
         path.write_text(html_text, encoding="utf-8")
         print(f"  ✓ {path.relative_to(ROOT)}  （{len(sections)} 节）")
 
