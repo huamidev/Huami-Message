@@ -27,71 +27,191 @@ final class MockAIService: AIService {
 
     func advise(context: AssistantContext, intent: AssistantIntent) -> AsyncStream<AssistantEvent> {
         let name = context.friendName
-        let quoted = String((context.lastFriendMessage?.text ?? "").prefix(24))
-
-        // 三种意图给三套不同的内容。
-        // 真接上 DeepSeek 之后，这里是三套不同的**提示词** ——
-        // 但界面和数据结构一行都不用改，因为大家都在 AssistantEvent 这个插座上。
-        let analysis: String
-        let suggestions: [String]
-
-        switch intent {
-
-        case .explain:
-            analysis = """
-            \(name)最后那句是「\(quoted)」。
-
-            这句话表面在问你为什么，底下其实压着两件事：
-            一是「我为你留了时间，你没出现」—— 这是失望；
-            二是把压力从一个人变成了一群人 —— 这是让你不好反驳。
-
-            所以他真正想听的不是理由，而是「我知道这件事对你重要」。
-            """
-            // 「他什么意思」只解释，不替你想怎么回 ——
-            // 有时候人只是想先听明白，不想马上做决定
-            suggestions = []
-
-        case .reply:
-            analysis = """
-            先别急着解释。核心顺序是：**先接住情绪，再讲事实**。
-
-            \(name)那句话的重点不在字面上，而在"我在意这件事，而你没当回事"。
-            所以第一句要先认下这件事，理由放在后面说 ——
-            反过来（先解释原因）就一定吵起来。
-            """
-            suggestions = [
-                "抱歉，昨天确实没到。我知道你们等了很久，这事是我不对。",
-                "昨天临时出了点事走不开，没来得及跟你们讲，对不起。",
-                "等我很久了吧？昨天实在脱不开身，回头我请你们吃饭赔罪。",
-            ]
-
-        case .draft:
-            analysis = """
-            不知道开头怎么写的时候，最好的办法是**直接承认那件事**，别绕。
-
-            给你起了三个头，你挑一个往下接就行：
-            """
-            suggestions = [
-                "昨天的事是我不对。我想跟你说一下当时的情况。",
-                "有件事我一直想跟你说，拖了两天，还是现在说比较好。",
-                "\(name)，昨天的局我搞砸了，想跟你认真道个歉。",
-            ]
-        }
+        let model = Self.decisionModel(for: intent, friendName: name)
 
         return AsyncStream { continuation in
             let task = Task {
-                // 先流式吐文字
-                for await chunk in Self.stream(analysis, chunk: 3, interval: .milliseconds(18)) {
+                // 先给一句状态提示 —— 什么都不显示地干等是最难受的
+                continuation.yield(.status("正在读你和\(name)的这段对话"))
+
+                // 然后一个方块一个方块地冒出来。
+                // 每出来一个就有信息可读，所以"等待"的感觉和转圈完全不同。
+                for block in model.blocks {
                     if Task.isCancelled { break }
-                    continuation.yield(.analysis(chunk))
+                    try? await Task.sleep(for: .milliseconds(420))
+                    continuation.yield(.block(block))
                 }
-                // 文字吐完了，再一次性给可以用的句子（如果有）
-                if !suggestions.isEmpty, !Task.isCancelled {
-                    continuation.yield(.suggestions(suggestions))
+
+                if !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(320))
+                    continuation.yield(.recommendation(model.recommendation))
                 }
                 continuation.finish()
             }
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    // MARK: - 假数据：三种意图各给一套判断
+    //
+    // 【这里的内容不是随便编的，它就是将来要给 DeepSeek 的提示词的草稿】
+    //
+    // 真接上 AI 之后，这些方块的内容由模型生成，但**形状完全一样**。
+    // 所以现在把"什么样的判断才算有用"想清楚，比急着接真模型重要得多。
+    //
+    // 几条我自己定的规矩：
+    //   · 每个方块里的选项概率加起来必须等于 100
+    //   · 至少有一个方块是"量级"（危险等级之类），因为人慌的时候需要一个刻度
+    //   · 最后那条建议必须是**具体动作**，不能是"多沟通"这种废话
+
+    private static func decisionModel(for intent: AssistantIntent,
+                                      friendName: String) -> DecisionModel {
+        switch intent {
+
+        // ── 他什么意思 ──
+        case .explain:
+            return DecisionModel(
+                blocks: [
+                    DecisionBlock(
+                        kind: .options,
+                        prompt: "他是在等你解释吗？",
+                        options: [
+                            DecisionOption(label: "不是，他要的是态度", percent: 79, isRecommended: true),
+                            DecisionOption(label: "是", percent: 21),
+                        ]
+                    ),
+                    DecisionBlock(
+                        kind: .options,
+                        title: "这句话底下的意思",
+                        prompt: "「你昨天怎么没来？大家都等你很久了」",
+                        options: [
+                            DecisionOption(label: "我为你留了时间，你没出现，我失望", percent: 68, isRecommended: true),
+                            DecisionOption(label: "大家都在，你让我不好看", percent: 22),
+                            DecisionOption(label: "单纯想知道原因", percent: 10),
+                        ]
+                    ),
+                    DecisionBlock(
+                        kind: .level,
+                        prompt: "这件事的严重程度",
+                        level: 6,
+                        levelCaption: "危险等级"
+                    ),
+                    DecisionBlock(
+                        kind: .options,
+                        prompt: "现在解释原因有用吗？",
+                        options: [
+                            DecisionOption(label: "没用，听着像找借口", percent: 85, isRecommended: true),
+                            DecisionOption(label: "有用", percent: 15),
+                        ]
+                    ),
+                    DecisionBlock(
+                        kind: .options,
+                        title: "最好的下一步",
+                        prompt: "你现在该做什么",
+                        options: [
+                            DecisionOption(label: "先认下这件事", percent: 74, isRecommended: true),
+                            DecisionOption(label: "先问清楚当时的情况", percent: 18),
+                            DecisionOption(label: "等他自己消气", percent: 8),
+                        ]
+                    ),
+                ],
+                recommendation: "回的时候先接住情绪，再讲事实。**第一句里不要出现「因为」**。",
+                sharedMessageCount: 0
+            )
+
+        // ── 我该怎么回 ──
+        case .reply:
+            return DecisionModel(
+                blocks: [
+                    DecisionBlock(
+                        kind: .options,
+                        prompt: "需要马上回吗？",
+                        options: [
+                            DecisionOption(label: "需要", percent: 88, isRecommended: true),
+                            DecisionOption(label: "可以缓一缓", percent: 12),
+                        ]
+                    ),
+                    DecisionBlock(
+                        kind: .level,
+                        prompt: "这件事的紧急程度",
+                        level: 7,
+                        levelCaption: "紧急程度"
+                    ),
+                    DecisionBlock(
+                        kind: .options,
+                        title: "这条回复的重点",
+                        prompt: "他其实在等哪一句",
+                        options: [
+                            DecisionOption(label: "认下「没到」这件事", percent: 71, isRecommended: true),
+                            DecisionOption(label: "说明当时的原因", percent: 19),
+                            DecisionOption(label: "把话题带过去", percent: 10),
+                        ]
+                    ),
+                    DecisionBlock(
+                        kind: .options,
+                        prompt: "「我不知道怎么解释」这种回答他能接受吗？",
+                        options: [
+                            DecisionOption(label: "不能", percent: 76, isRecommended: true),
+                            DecisionOption(label: "能", percent: 24),
+                        ]
+                    ),
+                    DecisionBlock(
+                        kind: .options,
+                        title: "推荐的开头",
+                        prompt: "第一句怎么说",
+                        options: [
+                            DecisionOption(label: "抱歉，昨天确实没到", percent: 64, isRecommended: true),
+                            DecisionOption(label: "昨天临时出了点事", percent: 26),
+                            DecisionOption(label: "等我很久了吧？", percent: 10),
+                        ]
+                    ),
+                ],
+                recommendation: "先认下「没到」这件事，理由放到第二句。**「因为」两个字越晚出现越好**。",
+                sharedMessageCount: 0
+            )
+
+        // ── 帮我起草 ──
+        case .draft:
+            return DecisionModel(
+                blocks: [
+                    DecisionBlock(
+                        kind: .options,
+                        prompt: "这件事需要你先开口吗？",
+                        options: [
+                            DecisionOption(label: "需要", percent: 82, isRecommended: true),
+                            DecisionOption(label: "可以再等等", percent: 18),
+                        ]
+                    ),
+                    DecisionBlock(
+                        kind: .options,
+                        title: "先开口的代价",
+                        prompt: "你在担心什么",
+                        options: [
+                            DecisionOption(label: "可能被追问细节", percent: 47),
+                            DecisionOption(label: "其实不丢面子，反而显得在意", percent: 42, isRecommended: true),
+                            DecisionOption(label: "显得我心虚", percent: 11),
+                        ]
+                    ),
+                    DecisionBlock(
+                        kind: .level,
+                        prompt: "开口的难度",
+                        level: 5,
+                        levelCaption: "开口难度"
+                    ),
+                    DecisionBlock(
+                        kind: .options,
+                        title: "起头的三种方式",
+                        prompt: "哪种最不容易把话说僵",
+                        options: [
+                            DecisionOption(label: "直接认下那件事", percent: 58, isRecommended: true),
+                            DecisionOption(label: "先说自己的感受", percent: 27),
+                            DecisionOption(label: "先问对方方不方便说", percent: 15),
+                        ]
+                    ),
+                ],
+                recommendation: "开头别绕。第一句就把那件事说出来，比如「\(friendName)，昨天的事是我不对」。**越绕越像心虚**。",
+                sharedMessageCount: 0
+            )
         }
     }
 

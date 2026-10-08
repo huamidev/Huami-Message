@@ -30,13 +30,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_MODEL = "deepseek-chat";
 
-/// 分析文字和建议之间的分隔标记。
-/// 为什么要这么绕：AI 只能吐文字，但我们有两种不同性质的东西要传 ——
-/// 分析（要一个字一个字显示）和建议（每条后面要挂按钮）。
-/// 用一个不会自然出现的标记切开，比让 AI 输出严格 JSON 稳得多
-/// （JSON 少一个引号就整段废了）。
-const SPLIT_MARKER = "<<<SUGGESTIONS>>>";
-
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -107,74 +100,78 @@ Deno.serve(async (req) => {
     const out = new ReadableStream({
       async start(controller) {
         const reader = upstream.body!.getReader();
-        let buffer = "";
-        let full = "";
-        let sentText = "";        // 已经转发出去的分析文字（用来算"还差多少没发"）
-        let markerSeen = false;
+        let sseBuffer = "";     // 上游 SSE 的粘包缓冲
+        let lineBuffer = "";    // 模型输出里"还没收到换行"的那半行
+        let sawFirstBlock = false;
 
         const send = (obj: unknown) =>
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+
+        /// 试着把一行解析成事件推出去。
+        /// 解析不了就丢掉 —— 模型偶尔会多说一句人话，不该让整个流崩掉。
+        const emitLine = (raw: string) => {
+          const line = raw.trim()
+            .replace(/^```(?:json)?/i, "")
+            .replace(/```$/, "")
+            .trim();
+          if (!line || !line.startsWith("{")) return;
+          try {
+            const obj = JSON.parse(line);
+            if (typeof obj.status === "string") {
+              send({ type: "status", value: obj.status });
+            } else if (typeof obj.recommendation === "string") {
+              send({ type: "recommendation", value: obj.recommendation });
+            } else if (typeof obj.kind === "string") {
+              sawFirstBlock = true;
+              send({ type: "block", value: obj });
+            }
+          } catch {
+            // 不是合法 JSON 的一行，忽略
+          }
+        };
 
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
+            sseBuffer += decoder.decode(value, { stream: true });
+            const sseLines = sseBuffer.split("\n");
+            sseBuffer = sseLines.pop() ?? "";
 
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const data = line.slice(6).trim();
+            for (const sseLine of sseLines) {
+              if (!sseLine.startsWith("data: ")) continue;
+              const data = sseLine.slice(6).trim();
               if (data === "[DONE]") continue;
 
+              let delta: string | undefined;
               try {
-                const chunk = JSON.parse(data);
-                const delta = chunk.choices?.[0]?.delta?.content;
-                if (!delta) continue;
-
-                full += delta;
-
-                if (shouldStream) {
-                  if (markerSeen) {
-                    // 已经在建议区了，文字部分不再转发
-                    continue;
-                  }
-                  // ⚠️ 这里必须判断"整段到目前为止"而不是"这一块"。
-                  //    模型完全可能把「分析结尾 + 分隔标记 + JSON 开头」
-                  //    塞进同一个数据块里 —— 那就得把标记之前的部分发完、
-                  //    之后的部分**先存着**，等收全了再解析成建议。
-                  //    我第一版没考虑这个，会在 JSON 只收到一个 "[" 时就去解析。
-                  const markerAt = full.indexOf(SPLIT_MARKER);
-                  if (markerAt === -1) {
-                    send({ type: "text", value: delta });
-                    sentText += delta;
-                  } else {
-                    markerSeen = true;
-                    const upToMarker = full.slice(0, markerAt);
-                    const remaining = upToMarker.slice(sentText.length);
-                    if (remaining) {
-                      send({ type: "text", value: remaining });
-                      sentText = upToMarker;
-                    }
-                  }
-                }
+                delta = JSON.parse(data).choices?.[0]?.delta?.content;
               } catch {
-                // 上游偶尔会发心跳之类的东西，忽略
+                continue;
               }
+              if (!delta) continue;
+
+              if (!shouldStream) {
+                lineBuffer += delta;   // 润色那种只要一整段，攒着最后一起发
+                continue;
+              }
+
+              // 逐行切：**只有收到换行才说明这一行是完整的 JSON**
+              lineBuffer += delta;
+              const parts = lineBuffer.split("\n");
+              lineBuffer = parts.pop() ?? "";
+              for (const part of parts) emitLine(part);
             }
           }
         } catch (e) {
           console.error("转发中断", e);
         } finally {
           if (!shouldStream) {
-            // 润色这种"只要一整段"的，最后一次性发
-            send({ type: "text", value: full.trim() });
-          } else if (markerSeen) {
-            // 收全了才解析建议 —— 到这里 JSON 一定是完整的
-            const after = full.slice(full.indexOf(SPLIT_MARKER) + SPLIT_MARKER.length);
-            send({ type: "suggestions", value: parseSuggestions(after) });
+            send({ type: "text", value: lineBuffer.trim() });
+          } else if (lineBuffer.trim()) {
+            // 最后一行可能没有换行结尾，补一次
+            emitLine(lineBuffer);
           }
           send({ type: "done" });
           controller.close();
@@ -232,7 +229,16 @@ function buildMessages(payload: any): { messages: any[]; stream: boolean } {
     };
   }
 
-  // ── 模块二：小助手 ──
+  // ── 模块二：小助手（决策模型）──
+  //
+  // 【输出格式：每行一个 JSON 对象】
+  //
+  // 为什么不用"一个大 JSON 数组"：那样必须等整个输出结束才能解析，
+  // 用户要盯着转圈等好几秒。改成一行的粒度之后，
+  // **每收满一行就能立刻推出一个方块**，方块一个一个冒出来。
+  //
+  // 这也让解析变得极简：按换行切，切出来的每一行都是完整 JSON。
+  // 代价只是要求模型别把 JSON 换行写 —— 一个句子里加进这个约束，很容易做到。
   const intent = payload?.intent ?? "reply";
   const friendName = String(payload?.friendName ?? "对方").slice(0, 20);
   const lines: string[] = (payload?.messages ?? [])
@@ -242,10 +248,24 @@ function buildMessages(payload: any): { messages: any[]; stream: boolean } {
     );
 
   const intents: Record<string, string> = {
-    explain: `先分析${friendName}最后那句话**真正想表达什么**（字面意思之下的意思）。不要给回复建议。`,
-    reply: `先简短分析${friendName}那句话的意思（2-3 句），然后给出 3 条可以直接发出去的回复。`,
-    draft: `帮用户起 3 个开头，用来主动跟${friendName}说一件不太好开口的事。`,
+    explain: `判断${friendName}最后那句话**真正想表达什么**。不要给回复建议。`,
+    reply: `判断${friendName}那句话的意思，并指出这条回复该说什么。`,
+    draft: `判断现在适不适合用户先开口，并给出起头的方向。`,
   };
+
+  const formatRules =
+    `输出格式（必须严格遵守，每行一个 JSON 对象，行与行之间不要有空行）：\n` +
+    `第一行：{"status":"正在读这段对话"}\n` +
+    `之后 3-5 行，每行一个方块，两种形态：\n` +
+    `  选项型：{"kind":"options","title":"可选的小标题","prompt":"问题","options":[{"label":"选项","percent":79,"isRecommended":true},{"label":"选项","percent":21}]}\n` +
+    `  量级型：{"kind":"level","prompt":"一句话","level":6,"levelCaption":"危险等级"}\n` +
+    `最后一行：{"recommendation":"一条具体动作"}\n\n` +
+    `硬性要求：\n` +
+    `1. **每个选项型方块里的 percent 加起来必须正好等于 100**。\n` +
+    `2. 至少有一个量级型方块（level 是 0-10 的整数）。\n` +
+    `3. percent 高的那一项要标 isRecommended: true。\n` +
+    `4. recommendation 必须是**具体动作**，不能是"多沟通""好好说"这种废话。\n` +
+    `5. 不要输出 JSON 以外的东西，不要加代码块标记。\n`;
 
   return {
     stream: true,
@@ -254,16 +274,10 @@ function buildMessages(payload: any): { messages: any[]; stream: boolean } {
         role: "system",
         content:
           `你是一个中文沟通顾问，帮用户把话说好。\n\n` +
-          `语气要求：像一个懂人情世故的朋友在给建议。说人话，不要"首先其次最后"，` +
-          `不要小标题，不要客套。中文标点。\n\n` +
-          `输出格式（必须严格遵守）：\n` +
-          `1. 先输出分析文字，用**两个星号**包住要强调的短语。\n` +
-          (intent === "explain"
-            ? `2. 只输出分析，不要输出任何建议，也不要输出分隔标记。\n`
-            : `2. 然后另起一行输出这个标记：${SPLIT_MARKER}\n` +
-              `3. 标记之后输出一个 JSON 数组，里面是 3 个字符串，` +
-              `每个字符串是一条可以直接发出去的完整中文消息（不要编号、不要引号）。\n` +
-              `4. JSON 之后不要再输出任何东西。\n`),
+          `你**不写回复**，你只做判断：判断对方在想什么、现在该做什么。\n` +
+          `语气像一个懂人情世故的朋友。说人话，不要"首先其次最后"，不要客套。\n` +
+          `允许用**两个星号**包住要强调的短语。\n\n` +
+          formatRules,
       },
       {
         role: "user",
@@ -273,20 +287,6 @@ function buildMessages(payload: any): { messages: any[]; stream: boolean } {
       },
     ],
   };
-}
-
-/// 从模型输出的尾巴里抠出那个 JSON 数组。
-/// 模型有时会在 JSON 前后多写几个字，所以做一次"从第一个 [ 到最后一个 ]"的容错。
-function parseSuggestions(raw: string): string[] {
-  const start = raw.indexOf("[");
-  const end = raw.lastIndexOf("]");
-  if (start === -1 || end === -1 || end <= start) return [];
-  try {
-    const arr = JSON.parse(raw.slice(start, end + 1));
-    return Array.isArray(arr) ? arr.filter((x) => typeof x === "string").slice(0, 3) : [];
-  } catch {
-    return [];
-  }
 }
 
 function json(body: unknown, status: number) {

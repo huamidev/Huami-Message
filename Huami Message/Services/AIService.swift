@@ -77,26 +77,9 @@ enum AssistantIntent: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-// MARK: - 助手的两种输出
-
-/// 助手吐出来的东西，分成两种。
-///
-/// 【为什么要分开，而不是吐一大段文字？】
-///
-/// 因为"可回复的建议"后面要挂一个「用这个」按钮 —— 它必须是**独立的数据**。
-/// 如果分析和建议全混在一段文字里，界面就得靠解析字符串去把建议拆出来，
-/// 那种代码又脆又难维护（AI 少打一个换行，功能就坏了）。
-///
-/// 分开之后：
-///   · 分析 = 一段文字，适合一个字一个字地"长"出来
-///   · 建议 = 一个字符串数组，每条自带一个按钮
-///
-/// 以后换成真的 DeepSeek，让它先输出分析、再输出一个 JSON 数组就够了，
-/// 界面一行都不用改。
-enum AssistantEvent {
-    case analysis(String)        // 分析文字（会分很多次到达）
-    case suggestions([String])   // 可回复的方向（一次给全）
-}
+// 小助手吐出来的东西（AssistantEvent）以及决策模型的结构，
+// 都定义在 Models/DecisionModel.swift 里 —— 那些是**数据形状**，
+// 不属于"AI 服务"这一层。
 
 // MARK: - AI 服务
 
@@ -115,7 +98,9 @@ protocol AIService {
     /// 注意：这里**只传一句话，不传聊天记录** —— 这是刻意的隐私设计。
     func polish(_ text: String, style: PolishStyle) -> AsyncStream<String>
 
-    /// 小助手：看一段对话，按指定的意图给出结果。
-    /// 先流式吐文字，再给几条可以直接用的回复。
+    /// 小助手：看一段对话，按指定的意图给出判断。
+    ///
+    /// 返回的是一串事件：状态提示 → 一个一个小方块 → 最后的建议动作。
+    /// 拆成事件是为了让方块**一个一个冒出来**，而不是让用户对着转圈等好几秒。
     func advise(context: AssistantContext, intent: AssistantIntent) -> AsyncStream<AssistantEvent>
 }

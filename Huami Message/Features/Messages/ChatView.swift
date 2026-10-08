@@ -21,11 +21,21 @@ struct ChatView: View {
     @State private var showReportSheet = false
     @State private var showClearConfirm = false
 
-    /// 要交给小助手的上下文。
-    /// 和润色一样用 `.sheet(item:)` 而不是 `.sheet(isPresented:)` ——
-    /// 要发给弹窗的数据，必须和"打开弹窗"这个动作绑在一起，
-    /// 不能让弹窗自己在某个时刻去读外面的状态（那个坑我踩过。）
-    @State private var assistantRequest: AssistantRequest?
+    /// 小助手在聊天记录里的判断。
+    ///
+    /// 【为什么不做成弹窗，而是插进对话流里】
+    ///
+    /// 因为它判断的是「上面那段对话」。放在弹窗里，用户得记住刚才说了什么；
+    /// 插在对话下面，它就在该在的位置上 —— 原文和判断永远在同一屏之内。
+    ///
+    /// 而且它不落库：这是对**此刻**的判断，不是一条消息。
+    /// 换个说法，它是"读"这段对话，不是"参与"这段对话。
+    @State private var assistantIntent: AssistantIntent?
+    @State private var assistantStatus: String?
+    @State private var assistantBlocks: [DecisionBlock] = []
+    @State private var assistantRecommendation: String?
+    @State private var assistantSharedCount = 0
+    @State private var assistantTask: Task<Void, Never>?
 
     /// 滚动用的锚点。它不是给用户看的，只是给代码一个「滚到这里」的坐标。
     private let bottomAnchor = "bottom"
@@ -160,15 +170,6 @@ struct ChatView: View {
             .presentationBackground(Theme.surface)
             .presentationCornerRadius(30)
         }
-        .sheet(item: $assistantRequest) { request in
-            AssistantSheet(context: request.context, intent: request.intent) { reply in
-                // 和润色一样：只填回输入框，不自动发送。
-                draft = reply
-            }
-            .presentationDetents([.large])
-            .presentationBackground(Theme.surface)
-            .presentationCornerRadius(30)
-        }
         // 删除是不可撤销的，必须再问一次 —— 这是"防手滑"的基本礼貌
         .confirmationDialog("清空和 \(conversation.friend.name) 的聊天记录？",
                             isPresented: $showClearConfirm, titleVisibility: .visible) {
@@ -215,13 +216,7 @@ struct ChatView: View {
             }
 
             if DevFlags.openAssistant {
-                assistantRequest = AssistantRequest(
-                    context: store.assistantContext(
-                        for: conversation.friend.id,
-                        friendName: conversation.friend.name
-                    ),
-                    intent: .reply
-                )
+                runAssistant(.reply)
             }
 
             // 危险操作的自检：删除整个会话。
@@ -326,6 +321,66 @@ struct ChatView: View {
     /// **少一步，而且不用组织语言**。
     ///
     /// 上面那行小字一直在，用户点之前就知道会发生什么 —— 这是知情同意的前提。
+    /// 开始（或重新开始）一次判断。
+    ///
+    /// 再点一次别的选项就是**重新判断**，而不是排队等两个结果 ——
+    /// 所以先把上一次的任务取消掉。
+    private func runAssistant(_ intent: AssistantIntent) {
+        assistantTask?.cancel()
+        Haptics.tap()
+
+        let context = store.assistantContext(
+            for: conversation.friend.id,
+            friendName: conversation.friend.name
+        )
+
+        // 这次到底发了多少条，如实记下来显示给用户 ——
+        // 隐私承诺不能只是写在政策里，得在用户眼前成立
+        withAnimation(.snappy(duration: 0.25)) {
+            assistantIntent = intent
+            assistantStatus = "正在读这段对话"
+            assistantBlocks = []
+            assistantRecommendation = nil
+            assistantSharedCount = context.messages.count
+        }
+
+        assistantTask = Task {
+            for await event in MockAIService().advise(context: context, intent: intent) {
+                if Task.isCancelled { return }
+                switch event {
+                case .status(let text):
+                    assistantStatus = text
+
+                case .block(let block):
+                    withAnimation(.snappy(duration: 0.3)) {
+                        assistantBlocks.append(block)
+                    }
+
+                case .recommendation(let text):
+                    withAnimation(.snappy(duration: 0.3)) {
+                        assistantRecommendation = text
+                    }
+                }
+            }
+            guard !Task.isCancelled else { return }
+            assistantStatus = nil
+            Haptics.success()
+        }
+    }
+
+    /// 收起判断结果，回到干净的聊天界面
+    private func clearAssistant() {
+        assistantTask?.cancel()
+        assistantTask = nil
+        withAnimation(.snappy(duration: 0.25)) {
+            assistantIntent = nil
+            assistantStatus = nil
+            assistantBlocks = []
+            assistantRecommendation = nil
+            assistantSharedCount = 0
+        }
+    }
+
     private var assistantQuickBox: some View {
         VStack(alignment: .leading, spacing: 7) {
 
@@ -339,19 +394,26 @@ struct ChatView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
                 Spacer(minLength: 0)
+
+                // 有判断结果显示时，给一个收起的出口。
+                // 没有出口的话，那段内容会一直占着聊天记录，用户只能靠退出重进。
+                if assistantIntent != nil {
+                    Button {
+                        Haptics.tap()
+                        clearAssistant()
+                    } label: {
+                        Text("收起")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             HStack(spacing: 7) {
                 ForEach(AssistantIntent.allCases) { intent in
                     Button {
-                        Haptics.tap()
-                        assistantRequest = AssistantRequest(
-                            context: store.assistantContext(
-                                for: conversation.friend.id,
-                                friendName: conversation.friend.name
-                            ),
-                            intent: intent
-                        )
+                        runAssistant(intent)
                     } label: {
                         Text(intent.title)
                             .font(.system(size: 12.5, weight: .medium))
@@ -395,6 +457,19 @@ struct ChatView: View {
                         )
                         .id(item.id)
                     }
+                }
+
+                // 小助手的判断插在最后一条消息下面。
+                // 它判断的就是"上面这段对话"，所以放在这里位置最对。
+                if assistantIntent != nil {
+                    DecisionCardsView(
+                        status: assistantStatus,
+                        blocks: assistantBlocks,
+                        recommendation: assistantRecommendation,
+                        sharedMessageCount: assistantSharedCount
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.top, 2)
                 }
 
                 // 一个看不见的锚点。滚到它 = 滚到最底部。
@@ -441,6 +516,13 @@ struct ChatView: View {
             } else {
                 // 用户正在读旧消息 —— 只记个数，绝不动他的位置
                 unseenCount += max(0, newCount - oldCount)
+            }
+        }
+        // 小助手每冒出一个方块，就往下滚一点让它露出来。
+        // 不滚的话方块会长在屏幕外面，用户以为它卡住了。
+        .onChange(of: assistantBlocks.count) { _, _ in
+            withAnimation(.snappy(duration: 0.3)) {
+                proxy.scrollTo(bottomAnchor, anchor: .bottom)
             }
         }
         // 拉黑提示条出现/消失时，聊天区域的高度会变。
@@ -534,10 +616,3 @@ struct PolishRequest: Identifiable {
     let original: String
 }
 
-/// 交给小助手的上下文 + 弹窗开关，打包成一个整体。
-/// 理由和上面的 PolishRequest 完全一样。
-struct AssistantRequest: Identifiable {
-    let id = UUID()
-    let context: AssistantContext
-    let intent: AssistantIntent
-}
