@@ -41,6 +41,23 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const payload = await req.json();
+
+    // ── ⓪ 探针（**放在鉴权之前**）──
+    //
+    // 它只回一句 pong、不碰数据库也不调用 AI，所以让未登录的请求也能问。
+    //
+    // 为什么要这样：App 的「服务器自检」是在**登录页**跑的（那时候还没登录）。
+    // 探针如果要求先登录，自检就永远拿不到"函数在不在"的答案 ——
+    // 未部署时它会看到 401 而不是 404，于是漏报，
+    // 用户就只能对着小助手的报错发呆。
+    if (payload?.mode === "ping") {
+      return new Response(
+        `data: ${JSON.stringify({ type: "pong" })}\n\ndata: ${JSON.stringify({ type: "done" })}\n\n`,
+        { headers: { ...CORS, "Content-Type": "text/event-stream" } },
+      );
+    }
+
     // ── ① 确认调用者是登录用户 ──
     // 不校验的话，任何人知道这个网址就能白用你的额度。
     const authHeader = req.headers.get("Authorization") ?? "";
@@ -50,7 +67,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
+      (Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY"))!,
       { global: { headers: { Authorization: authHeader } } },
     );
 
@@ -59,17 +76,7 @@ Deno.serve(async (req) => {
       return json({ error: "登录已失效，请重新登录" }, 401);
     }
 
-    // ── ② 读参数 ──
-    const payload = await req.json();
-
-    // 探针：App 用它检查"函数部署了没有"。
-    // **故意不调用 DeepSeek** —— 一个健康检查不该花钱。
-    if (payload?.mode === "ping") {
-      return new Response(
-        `data: ${JSON.stringify({ type: "pong" })}\n\ndata: ${JSON.stringify({ type: "done" })}\n\n`,
-        { headers: { ...CORS, "Content-Type": "text/event-stream" } },
-      );
-    }
+    // ── ② 读参数（payload 在上面已经解析过了）──
 
     const apiKey = Deno.env.get("DEEPSEEK_API_KEY");
     if (!apiKey) {
