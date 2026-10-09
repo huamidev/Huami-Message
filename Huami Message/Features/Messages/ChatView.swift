@@ -157,10 +157,32 @@ struct ChatView: View {
         )
     }
 
-    /// 这条消息是谁发的。一对一返回 nil（那种情况不需要标名字）。
+    /// 这条消息是谁发的。一对一返回 nil（那种情况不需要头像）。
+    ///
+    /// ⚠️ **群里查不到也要返回一个占位的，不能返回 nil。**
+    ///
+    /// 【为什么 —— 用户报的"群聊信息会直接到很下面"】
+    ///
+    /// 进群聊时成员是**异步**拉的（.task 里一次请求）。成员还没到的那几帧，
+    /// 这里返回 nil → 头像那一格不存在 → 行高矮一截；
+    /// 成员一到，头像冒出来 → 行高变高 → **整个列表的高度跟着变**，
+    /// 滚动位置就跳了。
+    ///
+    /// 用户看到的是"群聊的信息会直接到很下面"，得往上拉才看得见。
+    /// 一对一没有这个问题，因为一对一根本不显示头像 —— 只有群聊会抖。
+    ///
+    /// 修法是**让行高从一开始就定下来**：查不到也先占一个位置，
+    /// 等真名真头像到了只是把内容填进去，高度不变。
+    ///
+    /// 这也是通用的一条：**布局的高度不要依赖异步数据到没到。**
+    /// 要变就先把位置占住。
     private func senderInfo(for message: Message) -> GroupMember? {
+        guard conversation.friend.kind == .group else { return nil }
         guard let id = message.senderID else { return nil }
-        return memberByID[id]
+        if let known = memberByID[id] { return known }
+        // 还没拉到资料：用 id 造一个占位（头像会是一个稳定的配色圆块，
+        // 名字空着 —— 群里本来就不显示名字）
+        return GroupMember(id: id, name: "", avatarSeed: abs(id.hashValue), avatarURL: nil)
     }
 
     /// 成员表：发消息的人 → 他是谁。群聊里标名字用。
