@@ -1,19 +1,38 @@
-/* 沿用 iOS 版那套浅色配色 —— 两个端看起来要是同一个东西 */
+/* ============================================================================
+   视觉：照抄 iOS 版
+   ============================================================================
+   所有数值都来自 iOS 的 Design/Theme.swift —— 不是"看着像"，
+   是**同一个值**：主色 #12B7F5、气泡渐变 #18AEEA → #0FA0DE、
+   背景 #F2F3F5、卡片圆角 12、气泡圆角 18。
+
+   两个端应该是同一个东西的两种实现，不该是两个设计。
+   ============================================================================ */
+
 :root {
-  --bg: #f5f6f8;
+  --accent: #12b7f5;
+  --accent-soft: #e6f5fd;
+  --my-bubble: #12a9e8;
+  --mint: #00bfa5;
+  --warning: #f5a623;
+  --danger: #f5453d;
+
+  --bg: #f2f3f5;
   --surface: #ffffff;
-  --text: #1c1c1e;
-  --text-2: #6b7280;
-  --text-3: #9ca3af;
-  --accent: #2f9bf5;
-  --accent-soft: #e6f2fd;
-  --danger: #ef4444;
-  --separator: rgba(0, 0, 0, 0.06);
-  --radius: 14px;
+  --surface-alt: #f7f8fa;
+  --separator: #e8e9eb;
+
+  --text: #1a1a1a;
+  --text-2: #5a5f66;
+  --text-3: #9aa0a6;
+
+  --card-radius: 12px;
+  --bubble-radius: 18px;
+
+  /* iOS 的卡片阴影很轻 —— 是"浮起来一点点"，不是"贴了张纸" */
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.035);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
 html, body, #root { height: 100%; margin: 0; }
 
 body {
@@ -21,173 +40,188 @@ body {
   color: var(--text);
   font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI',
         'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  /* 聊天页自己管滚动，整页不要跟着橡皮筋 */
   overscroll-behavior: none;
 }
 
 .muted { color: var(--text-2); }
 .muted.small, .small { font-size: 13px; }
 
-/* ── 启动占位：什么都不画，避免闪一下登录页 ── */
-.boot {
-  height: 100%;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
+/* ── 启动占位 ── */
+.boot { height: 100%; display: grid; place-items: center; padding: 24px; }
 .boot-card { text-align: center; display: grid; gap: 8px; justify-items: center; }
 .boot-avatar {
-  width: 60px; height: 60px; border-radius: 50%;
+  width: 60px; height: 60px; border-radius: 18px;
   background: var(--accent); color: #fff;
-  display: grid; place-items: center;
-  font-size: 24px; font-weight: 600;
+  display: grid; place-items: center; font-size: 24px; font-weight: 600;
 }
 
 /* ── 登录页 ── */
-.auth-page {
-  min-height: 100%;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
+.auth-page { min-height: 100%; display: grid; place-items: center; padding: 24px; }
 .auth-card {
-  width: 100%;
-  max-width: 380px;
+  width: 100%; max-width: 380px;
   background: var(--surface);
   border-radius: 20px;
   padding: 28px 22px 24px;
-  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--card-shadow);
   text-align: center;
 }
-.auth-logo { font-size: 40px; }
-.auth-card h1 { font-size: 22px; margin: 8px 0 2px; }
+.auth-logo { font-size: 44px; line-height: 1; }
+.auth-card h1 { font-size: 22px; margin: 10px 0 2px; letter-spacing: -0.2px; }
 .auth-card > .muted { margin: 0 0 18px; font-size: 14px; }
 
 .segmented {
-  display: flex;
-  background: var(--bg);
-  border-radius: 10px;
-  padding: 3px;
-  margin-bottom: 16px;
+  display: flex; background: var(--bg);
+  border-radius: 10px; padding: 3px; margin-bottom: 16px;
 }
 .segmented button {
-  flex: 1;
-  border: 0;
-  background: transparent;
-  padding: 9px 0;
-  font: inherit;
-  font-size: 14px;
-  color: var(--text-2);
-  border-radius: 8px;
-  cursor: pointer;
+  flex: 1; border: 0; background: transparent; padding: 9px 0;
+  font: inherit; font-size: 14px; color: var(--text-2);
+  border-radius: 8px; cursor: pointer;
 }
 .segmented button.on {
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  background: var(--surface); color: var(--text);
+  font-weight: 600; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
 form { display: grid; gap: 10px; }
 
 input {
-  width: 100%;
-  padding: 13px 14px;
-  font: inherit;
-  border: 0;
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--text);
-  outline: none;
+  width: 100%; padding: 13px 14px; font: inherit; border: 0;
+  border-radius: var(--card-radius); background: var(--bg);
+  color: var(--text); outline: none;
 }
 input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 
 .btn {
-  border: 0;
-  border-radius: var(--radius);
-  padding: 13px 16px;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.15s;
+  border: 0; border-radius: var(--card-radius);
+  padding: 13px 16px; font: inherit; font-weight: 600;
+  cursor: pointer; transition: opacity 0.15s, transform 0.1s;
 }
-.btn:disabled { opacity: 0.55; cursor: default; }
-.btn.primary { background: var(--accent); color: #fff; }
+.btn:active:not(:disabled) { transform: scale(0.985); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.primary {
+  /* 和气泡同一个蓝，而且也是渐变 —— iOS 的主按钮就是这么做的 */
+  background: linear-gradient(180deg, #18aeea, #0fa0de);
+  color: #fff;
+}
 .btn.ghost { background: var(--bg); color: var(--text); }
+.btn.danger { background: var(--danger); color: #fff; }
 
 .msg { font-size: 13px; margin: 14px 0 0; }
 .msg.error { color: var(--danger); }
-.msg.ok { color: var(--msg-ok, #10b981); }
+.msg.ok { color: var(--mint); }
 
-/* ── 会话列表 ── */
-.app { height: 100%; display: flex; flex-direction: column; }
+/* ── 外壳与悬浮胶囊底栏 ── */
+.shell { height: 100%; display: flex; flex-direction: column; position: relative; }
+.shell-body { flex: 1; min-height: 0; }
+.shell-body > .app { height: 100%; }
 
+/* iOS 的底栏是**浮在内容上面的一条胶囊**，不是贴边的横条。
+   这也是它看起来比普通网页"高一级"的主要原因之一。 */
+.tabbar {
+  position: absolute;
+  left: 50%; transform: translateX(-50%);
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  width: min(360px, calc(100% - 32px));
+  display: flex;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06), 0 8px 30px rgba(0, 0, 0, 0.06);
+  z-index: 10;
+}
+.tab {
+  flex: 1; border: 0; background: transparent; cursor: pointer;
+  display: grid; justify-items: center; gap: 1px;
+  padding: 5px 0 4px; font: inherit; font-size: 10px;
+  color: var(--text-3); border-radius: 999px;
+  transition: color 0.15s;
+}
+.tab.on { color: var(--accent); font-weight: 600; }
+.tab-icon { font-size: 19px; line-height: 1; }
+
+/* 内容给悬浮底栏留出位置，不然最后一条被盖住 */
+.app { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+
+/* ── 顶栏 ── */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 16px 8px;
+  padding: 10px 16px 6px;
+  gap: 8px;
 }
-.topbar h1 { font-size: 26px; margin: 0; }
+.topbar h1 { font-size: 28px; margin: 0; letter-spacing: -0.5px; }
 
+/* 圆形白色按钮 —— iOS 里所有顶栏图标都是这个样子 */
 .icon-btn {
-  border: 0; background: var(--surface); color: var(--text-2);
-  width: 38px; height: 38px; border-radius: 50%;
-  font-size: 17px; cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  border: 0; background: var(--surface); color: var(--text);
+  width: 38px; height: 38px; flex: 0 0 auto;
+  border-radius: 50%; font-size: 17px; cursor: pointer;
+  box-shadow: var(--card-shadow);
+  display: grid; place-items: center;
 }
+.icon-btn:active { background: #f0f1f3; }
 
 .pad { padding: 0 16px; }
 
 .empty {
   flex: 1; display: grid; place-content: center; justify-items: center;
-  gap: 4px; text-align: center; color: var(--text-2);
+  gap: 4px; text-align: center; color: var(--text-2); padding-bottom: 80px;
 }
-.empty-icon { font-size: 40px; margin-bottom: 6px; }
+.empty-icon { font-size: 44px; margin-bottom: 6px; opacity: 0.9; }
 .empty p { margin: 0; }
 
-.conv-list { list-style: none; margin: 8px 0 0; padding: 0 12px 24px; overflow-y: auto; flex: 1; }
-.conv-list li { margin-bottom: 6px; }
+/* ── 会话列表 ── */
+.conv-list { list-style: none; margin: 6px 0 0; padding: 0 12px; overflow-y: auto; flex: 1; }
+.conv-list li { margin-bottom: 8px; }
 
 .conv {
   display: flex; align-items: center; gap: 12px; width: 100%;
   border: 0; background: var(--surface); cursor: pointer;
-  padding: 10px 12px; border-radius: var(--radius);
+  padding: 11px 12px; border-radius: var(--card-radius);
   text-align: left; font: inherit; color: inherit;
+  box-shadow: var(--card-shadow);
 }
-.conv:active { background: #f0f1f3; }
+.conv:active { background: #fafbfc; }
 
 .conv-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .conv-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.conv-name { font-weight: 600; font-size: 16px; }
+.conv-name { font-weight: 600; font-size: 16px; letter-spacing: -0.2px; }
 .conv-time { font-size: 12px; color: var(--text-3); flex: 0 0 auto; }
 .conv-preview {
   font-size: 14px; color: var(--text-2);
-  /* 长消息不能把行撑开 —— 一行截断，这是列表的常识 */
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .badge {
   flex: 0 0 auto; min-width: 18px; height: 18px; padding: 0 5px;
   border-radius: 9px; background: var(--danger); color: #fff;
-  font-size: 11px; font-weight: 600;
-  display: grid; place-items: center;
+  font-size: 11px; font-weight: 600; display: grid; place-items: center;
 }
 
+/* ⚠️ **圆角方形，不是圆形。**
+   iOS 版所有头像都是圆角方形（半径约 30%）——
+   圆形是微信/Telegram 的做法，抄错这个整个感觉就不对了。 */
 .avatar {
-  flex: 0 0 auto; border-radius: 50%; color: #fff;
+  flex: 0 0 auto; border-radius: 30%; color: #fff;
   display: grid; place-items: center; font-weight: 600;
-  overflow: hidden;
+  overflow: hidden; letter-spacing: -0.5px;
 }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ── 聊天页 ── */
 .chat { height: 100%; display: flex; flex-direction: column; }
 
-.chat-topbar { gap: 8px; }
-.chat-topbar h2 { font-size: 17px; margin: 0; flex: 1; text-align: center; }
+.chat-topbar { justify-content: space-between; }
+.chat-topbar h2 {
+  font-size: 17px; font-weight: 600; margin: 0; flex: 1; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .messages {
-  flex: 1; overflow-y: auto; padding: 8px 12px 12px;
-  display: flex; flex-direction: column; gap: 8px;
+  flex: 1; overflow-y: auto; padding: 10px 12px 12px;
+  display: flex; flex-direction: column; gap: 10px;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -197,86 +231,64 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 
 .stamp {
   font-size: 11px; color: var(--text-3); flex: 0 0 auto;
-  /* 和气泡底边对齐时往上抬一点：文字基线比气泡底边低 */
   padding-bottom: 3px;
 }
 
 .bubble {
   max-width: 72%;
-  /* ⚠️ 最小宽度。
-     不加的话，一两个字的短消息（"hi"）会被圆角切成一个**正圆** ——
-     圆角半径是按"正常气泡高度"定的，而短消息的宽度刚好和高度差不多。
-     用户的原话是"这个头像做的像个屎"（他以为那是头像，
-     其实是一个被压成圆的气泡）。iOS 版修过这个，网页版漏了。 */
+  /* 最小宽度：不加的话一两个字的短消息会被圆角切成**正圆** */
   min-width: 52px;
   padding: 9px 13px;
-  border-radius: 18px;
-  font-size: 16px;
-  line-height: 1.4;
-  word-break: break-word;
-  white-space: pre-wrap;
+  border-radius: var(--bubble-radius);
+  font-size: 16px; line-height: 1.42;
+  word-break: break-word; white-space: pre-wrap;
 }
+/* 对方：白底 + 一根极细的描边（iOS 就是这么做的 ——
+   纯白在浅灰背景上边界不清，加一根线就"立"住了） */
 .bubble.theirs {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--surface); color: var(--text);
+  border: 0.5px solid var(--separator);
   border-bottom-left-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.045);
 }
+/* 自己：两档极接近的蓝的渐变 + 同色柔光 */
 .bubble.mine {
-  background: var(--accent);
+  background: linear-gradient(180deg, #18aeea, #0fa0de);
   color: #fff;
   border-bottom-right-radius: 6px;
+  box-shadow: 0 3px 10px rgba(18, 169, 232, 0.22);
 }
 
-.recalled {
-  align-self: center;
-  font-size: 12px;
-  color: var(--text-3);
-  padding: 2px 0;
-}
+.recalled { align-self: center; font-size: 12px; color: var(--text-3); padding: 2px 0; }
 
+/* ── 输入栏：毛玻璃胶囊 ── */
 .composer {
-  display: flex; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
-  background: var(--bg);
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px calc(88px + env(safe-area-inset-bottom));
+  background: transparent;
 }
-.composer input { flex: 1; }
-.composer .btn { padding: 13px 18px; }
-
-/* ── 三个 Tab 的外壳 ── */
-.shell { height: 100%; display: flex; flex-direction: column; }
-.shell-body { flex: 1; min-height: 0; }
-.shell-body > .app { height: 100%; }
-
-.tabbar {
-  display: flex;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--separator);
-  padding-bottom: env(safe-area-inset-bottom);
+.composer input {
+  /* 白色半透明 + 模糊 —— 消息从它下面滚过去会透出一层颜色 */
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 999px;
+  padding: 10px 16px;
+  box-shadow: var(--card-shadow);
 }
-.tab {
-  flex: 1; border: 0; background: transparent; cursor: pointer;
-  display: grid; justify-items: center; gap: 1px;
-  padding: 7px 0 5px; font: inherit; font-size: 10px;
-  color: var(--text-3);
-}
-.tab.on { color: var(--accent); }
-.tab-icon { font-size: 20px; line-height: 1; }
+.composer .btn { border-radius: 999px; padding: 10px 18px; }
 
 /* ── 卡片 ── */
 .card {
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 14px;
-  margin: 10px 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: var(--surface); border-radius: var(--card-radius);
+  padding: 14px; margin: 10px 0; box-shadow: var(--card-shadow);
 }
-.card h3 { margin: 0 0 6px; font-size: 15px; }
+.card h3 { margin: 0 0 6px; font-size: 15px; letter-spacing: -0.2px; }
 
 .row-form { display: flex; gap: 8px; }
 .row-form input { flex: 1; }
 
-.req { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+.req { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
 .req-main { flex: 1; min-width: 0; }
 .small-btn { padding: 8px 12px; font-size: 13px; border-radius: 10px; }
 
@@ -285,24 +297,29 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
   font-size: 22px; font-weight: 700; margin: 4px 0 6px;
 }
 
+.owner-tag {
+  font-size: 11px; font-weight: 600; color: var(--accent);
+  background: var(--accent-soft); border-radius: 999px; padding: 2px 8px;
+}
+
 /* 选人 */
-.pick { width: 100%; border: 0; background: var(--surface); border-radius: var(--radius);
-        padding: 8px 12px; margin-bottom: 6px; text-align: left; cursor: pointer; }
-.tick { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--separator);
-        display: grid; place-items: center; font-size: 13px; color: #fff; flex: 0 0 auto; }
+.pick {
+  width: 100%; border: 0; background: transparent; border-radius: 10px;
+  padding: 8px 6px; margin-bottom: 2px; text-align: left; cursor: pointer;
+}
+.pick:active { background: var(--bg); }
+.tick {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1.5px solid var(--separator);
+  display: grid; place-items: center; font-size: 13px; color: #fff; flex: 0 0 auto;
+}
 .tick.on { background: var(--accent); border-color: var(--accent); }
 
 /* 图片消息 */
 .bubble-image {
-  display: block;
-  max-width: 100%;
-  max-height: 300px;
-  border-radius: 12px;
-  /* 图还没下完时先占个位，避免气泡一会儿大一会儿小 */
-  background: rgba(0, 0, 0, 0.05);
-  min-width: 80px;
-  min-height: 80px;
-  object-fit: cover;
+  display: block; max-width: 100%; max-height: 300px;
+  border-radius: 12px; background: rgba(0, 0, 0, 0.05);
+  min-width: 80px; min-height: 80px; object-fit: cover;
 }
 .bubble .bubble-image + span { display: block; margin-top: 6px; }
 
@@ -310,12 +327,12 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 .voice { display: flex; align-items: center; gap: 8px; }
 .voice audio { height: 34px; max-width: 200px; }
 .bubble.mine .voice .stamp { color: rgba(255, 255, 255, 0.8); }
-.btn.danger { background: var(--danger); color: #fff; }
 
-/* ── 润色面板 ── */
+/* ── 弹出面板 ── */
 .sheet-backdrop {
-  position: fixed; inset: 0; z-index: 20;
+  position: fixed; inset: 0; z-index: 40;
   background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(2px);
   display: flex; align-items: flex-end; justify-content: center;
 }
 .sheet {
@@ -323,14 +340,14 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
   background: var(--surface);
   border-radius: 20px 20px 0 0;
   padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
-  display: grid; gap: 12px;
-  max-height: 88vh; overflow-y: auto;
+  display: grid; gap: 10px; max-height: 88vh; overflow-y: auto;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.12);
 }
 .sheet h3 { margin: 0; font-size: 17px; }
 
 .quote {
-  font-size: 14px; color: var(--text-2);
-  background: var(--bg); border-radius: 10px; padding: 10px 12px;
+  font-size: 14px; color: var(--text-2); background: var(--bg);
+  border-radius: 10px; padding: 10px 12px;
   max-height: 90px; overflow-y: auto; white-space: pre-wrap;
 }
 
@@ -347,8 +364,7 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 
 .result {
   font-size: 15px; line-height: 1.5; white-space: pre-wrap;
-  background: var(--bg); border-radius: 10px; padding: 12px;
-  min-height: 56px;
+  background: var(--bg); border-radius: 10px; padding: 12px; min-height: 56px;
 }
 .caret {
   display: inline-block; width: 2px; height: 15px; margin-left: 2px;
@@ -360,19 +376,8 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 .sheet-actions { display: flex; gap: 10px; }
 .sheet-actions .btn { flex: 1; }
 
-.owner-tag {
-  font-size: 11px; font-weight: 600; color: var(--accent);
-  background: var(--accent-soft); border-radius: 999px; padding: 2px 8px;
-}
-
-/* 整屏覆盖的页面（群资料这类"从聊天里进去"的二级页）。
-   不这么做的话，它会渲染在聊天页内部 —— 后面露着顶栏和输入栏，
-   看着像布局坏了。 */
+/* 整屏覆盖的二级页 */
 .overlay-page {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  background: var(--bg);
-  /* 让内容自己滚，别让底下那一层跟着动 */
-  overflow: hidden;
+  position: fixed; inset: 0; z-index: 30;
+  background: var(--bg); overflow: hidden;
 }

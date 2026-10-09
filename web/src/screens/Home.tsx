@@ -94,7 +94,7 @@ export default function Home({ session }: { session: Session }) {
         </div>
       )}
 
-      <ul className="conv-list">
+      <ul className="conv-list" style={{ paddingBottom: 96 }}>
         {conversations?.map((c) => (
           <li key={c.id}>
             <button className="conv" onClick={() => setOpened(c)}>

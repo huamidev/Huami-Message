@@ -52,14 +52,30 @@ if (hasList > 0) {
   console.log('   对方每条的左侧头像数:', avatars, avatars === theirs ? '✓ 每条都有' : '✗ 数量对不上')
 
   // ④ 发一条
+  //
+  // ⚠️ **默认不跑。**
+  //
+  // 这个自检用的是真实账号、真实会话 —— 发出去的消息会**留在用户的
+  // 聊天记录里**，而且删不掉（消息表没有删除权限，那是当初为了
+  // 不让任何一方单方面抹掉记录而定的）。
+  //
+  // 我第一次跑的时候往用户的真实对话里塞了六条"浏览器自检 13:29:37"，
+  // 清不掉。所以现在要显式加 --send 才跑这一步。
+  //
+  // 要跑就：node tools/browser-check.mjs --send
+  const allowSend = process.argv.includes('--send')
   const text = '浏览器自检 ' + new Date().toLocaleTimeString('zh-CN')
+  if (!allowSend) {
+    console.log('④ 发送测试：跳过（要跑加 --send，注意消息会留在聊天记录里）')
+  } else {
   await page.fill('.composer input[type=text], .composer input:not([type])', text)
   await page.waitForTimeout(300)
   await page.click('.composer button[type=submit]')
   await page.waitForTimeout(3500)
   await shot('5-发送后')
   const sent = await page.locator(`text=${text}`).count()
-  console.log('④ 发出去的消息出现在页面上:', sent > 0 ? '✓' : '✗')
+    console.log('④ 发出去的消息出现在页面上:', sent > 0 ? '✓' : '✗')
+  }
 }
 
 // ④a 撤回刚发的那条（长按 = contextmenu）
