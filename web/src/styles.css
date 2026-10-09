@@ -381,3 +381,38 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
   position: fixed; inset: 0; z-index: 30;
   background: var(--bg); overflow: hidden;
 }
+
+/* ── 小助手的方块 ── */
+.block {
+  background: var(--bg); border-radius: 12px; padding: 12px;
+  display: grid; gap: 8px;
+}
+.block-title { font-size: 12px; font-weight: 600; color: var(--accent); }
+.block-prompt { font-size: 14px; font-weight: 500; }
+
+.options { display: grid; gap: 8px; }
+.option { display: grid; gap: 4px; }
+.option.on .option-label { font-weight: 600; }
+.option-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.option-percent { color: var(--text-2); flex: 0 0 auto; }
+
+.bar { height: 5px; border-radius: 3px; background: rgba(0, 0, 0, 0.06); overflow: hidden; }
+.bar-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, #18aeea, #0fa0de);
+  transition: width 0.5s ease;
+}
+.option.on .bar-fill { box-shadow: 0 0 0 1px rgba(18, 183, 245, 0.35); }
+
+.level { display: grid; gap: 6px; }
+.level-num { font-size: 26px; font-weight: 700; letter-spacing: -1px; }
+.level-num span { font-size: 13px; font-weight: 500; color: var(--text-3); }
+
+.advice {
+  background: var(--accent-soft); border-radius: 12px; padding: 12px;
+  font-size: 14px; line-height: 1.5;
+}
+.advice-tag {
+  font-size: 11px; font-weight: 700; color: var(--accent);
+  letter-spacing: 0.5px; margin-bottom: 4px;
+}

@@ -9,6 +9,7 @@ import {
 import { startRecording, formatSeconds } from '../lib/audio'
 import PolishSheet from '../components/PolishSheet'
 import GroupInfo from './GroupInfo'
+import AssistantSheet from '../components/AssistantSheet'
 import type { Conversation, Message } from '../lib/types'
 import Avatar from '../components/Avatar'
 
@@ -50,6 +51,9 @@ export default function Chat({
   const [showInfo, setShowInfo] = useState(false)
   /// 长按哪条消息了（弹出撤回/删除）
   const [actionFor, setActionFor] = useState<Message | null>(null)
+  /// 右上角的 ⋯ 菜单开着吗
+  const [showMenu, setShowMenu] = useState(false)
+  const [showAssistant, setShowAssistant] = useState(false)
   const recorderRef = useRef<ReturnType<typeof startRecording> | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -289,6 +293,30 @@ export default function Chat({
         </div>
       )}
 
+      {showMenu && (
+        <div className="sheet-backdrop" onClick={() => setShowMenu(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <button className="btn ghost" onClick={() => { setShowMenu(false); setShowAssistant(true) }}>
+              ✨ 小助手：分析这段对话
+            </button>
+            {isGroup && (
+              <button className="btn ghost" onClick={() => { setShowMenu(false); setShowInfo(true) }}>
+                👥 群聊信息
+              </button>
+            )}
+            <button className="btn ghost" onClick={() => setShowMenu(false)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {showAssistant && (
+        <AssistantSheet
+          messages={messages}
+          friendName={conversation.name}
+          onClose={() => setShowAssistant(false)}
+        />
+      )}
+
       {showInfo && (
         <GroupInfo
           session={session}
@@ -312,11 +340,7 @@ export default function Chat({
           ‹
         </button>
         <h2>{conversation.name}</h2>
-        {isGroup ? (
-          <button className="icon-btn" onClick={() => setShowInfo(true)} title="群聊信息">⋯</button>
-        ) : (
-          <span style={{ width: 38 }} />
-        )}
+        <button className="icon-btn" onClick={() => setShowMenu(true)} title="更多">⋯</button>
       </header>
 
       <div className="messages" ref={listRef} onScroll={onScroll}>

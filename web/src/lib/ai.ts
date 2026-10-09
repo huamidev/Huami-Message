@@ -22,6 +22,68 @@ export const POLISH_STYLES: { id: PolishStyle; title: string; hint: string }[] =
   { id: 'warm', title: '更有温度', hint: '加一点关心，适合在乎的人' },
 ]
 
+/// 小助手：看一段对话，给判断和建议。
+///
+/// 和润色走同一个云函数、同一条 SSE 通道，只是 mode 不同。
+/// 它发回来的不是文字，而是几种结构化的"方块"——
+/// 因为"他什么意思"这种问题，一句话说不清，
+/// 用几个带概率的选项反而更接近人真实的判断方式。
+export type AssistantIntent = 'explain' | 'reply' | 'draft'
+
+export const ASSISTANT_INTENTS: { id: AssistantIntent; title: string }[] = [
+  { id: 'explain', title: '他什么意思？' },
+  { id: 'reply', title: '我该怎么回？' },
+  { id: 'draft', title: '帮我起草' },
+]
+
+export interface DecisionOption {
+  label: string
+  percent: number
+  isRecommended?: boolean
+}
+
+export interface DecisionBlock {
+  kind: 'options' | 'level'
+  title?: string
+  prompt: string
+  options?: DecisionOption[]
+  level?: number
+}
+
+export type AssistantEvent =
+  | { type: 'status'; value: string }
+  | { type: 'block'; value: DecisionBlock }
+  | { type: 'recommendation'; value: string }
+
+/// 让小助手看一段对话。
+export async function advise(params: {
+  friendName: string
+  intent: AssistantIntent
+  /// 只发最近若干条 —— 这是对用户的隐私承诺，不能只是说说
+  messages: { mine: boolean; text: string }[]
+  onEvent: (event: AssistantEvent) => void
+}): Promise<void> {
+  await streamAI(
+    {
+      mode: 'advise',
+      friend_name: params.friendName,
+      intent: params.intent,
+      messages: params.messages,
+    },
+    (event) => {
+      const type = event?.type
+      if (type === 'status' && typeof event.value === 'string') {
+        params.onEvent({ type: 'status', value: event.value })
+      } else if (type === 'block' && event.value) {
+        params.onEvent({ type: 'block', value: event.value as DecisionBlock })
+      } else if (type === 'recommendation' && typeof event.value === 'string') {
+        params.onEvent({ type: 'recommendation', value: event.value })
+      }
+      // text / done 不属于助手，忽略
+    },
+  )
+}
+
 /// 润色一句话。每收到一段就回调一次 `onChunk`。
 ///
 /// 返回一个可以取消的对象 —— 用户点了别的风格或者关掉面板时，
@@ -30,6 +92,22 @@ export async function polish(
   text: string,
   style: PolishStyle,
   onChunk: (piece: string) => void,
+): Promise<void> {
+  await streamAI({ mode: 'polish', text, style }, (event) => {
+    if (event?.type === 'text' && typeof event.value === 'string') onChunk(event.value)
+  })
+}
+
+/// 调 AI 云函数并把 SSE 一条条解出来。
+///
+/// 【为什么两个功能共用一个函数】
+///
+/// 润色和小助手走的是同一个云函数、同一条 SSE 通道，只是 mode 不同。
+/// 读流的逻辑（buffer、半行、跨域、401）一模一样 ——
+/// 写两遍就意味着以后修一个 bug 要记得修两处。
+export async function streamAI(
+  body: Record<string, unknown>,
+  onEvent: (event: any) => void,
 ): Promise<void> {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
@@ -43,7 +121,7 @@ export async function polish(
       Authorization: `Bearer ${token}`,
     },
     // 字段名是下划线 —— 服务器（Deno）那边就是按这个读的
-    body: JSON.stringify({ mode: 'polish', text, style }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {
@@ -70,13 +148,13 @@ export async function polish(
     const lines = buffer.split('\n')
     buffer = lines.pop() ?? ''          // 最后一段可能是半行，留到下一轮
     for (const line of lines) {
-      const piece = parseLine(line)
-      if (piece) onChunk(piece)
+      const event = parseLine(line)
+      if (event) onEvent(event)
     }
   }
   // 收尾：万一最后一行没有换行符
   const tail = parseLine(buffer)
-  if (tail) onChunk(tail)
+  if (tail) onEvent(tail)
 }
 
 /// 解析一行 SSE，取出文字片段。
@@ -89,16 +167,14 @@ export async function polish(
 ///
 /// **不认识的 type 一律忽略**，不要抛错 ——
 /// 服务器以后加了新类型，老客户端不该因此崩掉。
-function parseLine(line: string): string | null {
+function parseLine(line: string): any | null {
   const trimmed = line.trim()
   if (!trimmed.startsWith('data:')) return null
   const payload = trimmed.slice(5).trim()
   if (!payload || payload === '[DONE]') return null
 
   try {
-    const event = JSON.parse(payload)
-    if (event?.type === 'text' && typeof event.value === 'string') return event.value
-    return null
+    return JSON.parse(payload)
   } catch {
     // 解析不了就当没有 —— 一行坏数据不该毁掉整段对话
     return null

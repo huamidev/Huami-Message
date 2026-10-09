@@ -103,6 +103,29 @@ if (await lastMine.count()) {
   }
 }
 
+// ⚠️ 顺序：小助手必须在**还停在聊天页里**的时候测。
+// 放到群资料之后的话，那一步结束时已经退回列表了，
+// 页面上根本没有 .chat-topbar —— 找不到不是「没有这个功能」，
+// 是「看错地方了」。这个错今天犯了两次。
+// ④c 小助手（只读，不发消息 —— 但会消耗一次 AI 调用）
+await page.locator('.chat-topbar .icon-btn').last().click()
+await page.waitForTimeout(900)
+await page.locator('.sheet button:has-text("小助手")').click()
+await page.waitForTimeout(1200)
+await shot('4d-小助手面板')
+await page.locator('.sheet button:has-text("他什么意思")').click()
+console.log('④c 小助手：已发起分析，等结果…')
+await page.waitForTimeout(15000)
+await shot('4e-小助手结果')
+const blockCount = await page.locator('.block').count()
+const adviceCount = await page.locator('.advice').count()
+const optionCount = await page.locator('.option').count()
+console.log('④c 小助手：方块', blockCount, '| 选项', optionCount, '| 建议', adviceCount,
+            (blockCount > 0 && adviceCount > 0) ? '✓' : '✗（没拿到结果）')
+await page.locator('.sheet button:has-text("关闭")').click()
+await page.waitForTimeout(800)
+
+
 // ④b 群资料页（群里左上角那个 ⋯）
 // ⚠️ **先回列表再找群** —— 上面第④步之后还停在聊天页里，
 //    那时候页面上根本没有 .conv 元素，找不到群不是"没有群"，
@@ -117,6 +140,10 @@ if (await groupRow.count()) {
   const dots = page.locator('.chat-topbar .icon-btn').last()
   if (await dots.count()) {
     await dots.click()
+    await page.waitForTimeout(900)
+    // 顶栏的 ⋯ 现在弹的是菜单（小助手 / 群聊信息），
+    // 不再直接进群资料 —— 先点菜单里那一项
+    await page.locator('.sheet button:has-text("群聊信息")').click()
     await page.waitForTimeout(2000)
     await shot('5b-群资料')
     const members = await page.locator('.req .conv-name').count()
