@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   findProfile, sendFriendRequest, loadIncomingRequests, respondToRequest,
@@ -14,8 +14,16 @@ import Avatar from '../components/Avatar'
 ///
 /// 用户的心智是"我想加个人"和"有人要加我" —— 这两件事都发生在
 /// "和好友有关"的那一刻。分成两个 Tab 的话，他得先想清楚自己属于哪一种。
-export default function Contacts({ session }: { session: Session }) {
+export default function Contacts({
+  session,
+  initialUsername = null,
+}: {
+  session: Session
+  /// 从邀请链接（?add=xxx）带进来的用户名 —— 一进页面就自动查一次
+  initialUsername?: string | null
+}) {
   const myID = session.user.id
+  const usedInitial = useRef(false)
 
   const [input, setInput] = useState('')
   const [found, setFound] = useState<Profile | null>(null)
@@ -42,6 +50,21 @@ export default function Contacts({ session }: { session: Session }) {
       // 拉不到申请不该打扰用户 —— 顶多少看到一个红点
     }
   }
+
+  // 邀请链接带进来的用户名：进页面就填好、并且自动查一次。
+  //
+  // **只做一次** —— 用 ref 而不是 state 记这个标记：
+  // 用 state 的话，它自己一变又触发一次重渲染、又跑一遍这个 effect。
+  useEffect(() => {
+    if (!initialUsername || usedInitial.current) return
+    usedInitial.current = true
+    const name = normalizeUsername(initialUsername)
+    setInput(name)
+    // 直接查，省掉用户再点一下「查找」
+    findProfile(name)
+      .then((p) => { setFound(p); setSearched(true) })
+      .catch(() => {})
+  }, [initialUsername])
 
   useEffect(() => {
     // 我的用户名 + 我的二维码

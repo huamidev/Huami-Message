@@ -50,6 +50,14 @@ export default function Login() {
         <h1>Huami Message</h1>
         <p className="muted">帮你把话说好</p>
 
+        {/* 朋友是点别人发的链接进来的，他不知道这是什么。
+            所以第一屏就要说清三件事：这是什么、要注册、注册完要干吗。 */}
+        <ul className="intro">
+          <li>用邮箱注册，不需要手机号</li>
+          <li>注册完去「联系人」输入对方的用户名，就能开始聊</li>
+          <li>对方发来链接的话，用户名会自动填好</li>
+        </ul>
+
         <div className="segmented">
           <button
             className={mode === 'signin' ? 'on' : ''}

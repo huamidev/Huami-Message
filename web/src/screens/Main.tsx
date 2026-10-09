@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import Home from './Home'
 import Contacts from './Contacts'
@@ -15,12 +15,29 @@ type Tab = 'messages' | 'contacts' | 'me'
 
 export default function Main({ session }: { session: Session }) {
   const [tab, setTab] = useState<Tab>('messages')
+  /// 邀请链接里带的用户名（?add=xxx）
+  const [invite, setInvite] = useState<string | null>(null)
+
+  useEffect(() => {
+    // 邀请链接：https://你的网址/?add=huami
+    //
+    // 朋友点开就是"直接加这个人"，不用自己去问用户名、再手打一遍。
+    // 打完字还要对方报一遍用户名，是最容易劝退的一步。
+    const name = new URLSearchParams(window.location.search).get('add')
+    if (name) {
+      setInvite(name)
+      setTab('contacts')
+      // 把参数从地址栏抹掉：不然刷新一次又跳一次，
+      // 而且用户复制地址发给别人时会带上这个"加谁"的尾巴。
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
 
   return (
     <div className="shell">
       <div className="shell-body">
         {tab === 'messages' && <Home session={session} />}
-        {tab === 'contacts' && <Contacts session={session} />}
+        {tab === 'contacts' && <Contacts session={session} initialUsername={invite} />}
         {tab === 'me' && <Me session={session} />}
       </div>
 

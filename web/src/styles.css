@@ -429,3 +429,13 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
   display: grid; place-items: center;
   box-shadow: var(--card-shadow);
 }
+
+/* 登录页的说明 */
+.intro {
+  list-style: none; margin: 0 0 18px; padding: 12px 14px;
+  background: var(--bg); border-radius: var(--card-radius);
+  display: grid; gap: 6px; text-align: left;
+  font-size: 13px; color: var(--text-2);
+}
+.intro li { display: flex; gap: 8px; }
+.intro li::before { content: '·'; color: var(--accent); font-weight: 700; }
