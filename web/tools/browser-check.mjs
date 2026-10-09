@@ -1,7 +1,10 @@
 import { chromium } from 'playwright'
 import jsQR from 'jsqr'
 
-const BASE = 'http://127.0.0.1:5181'
+// 站点地址。可以用环境变量覆盖 —— 这样同一个脚本既能测本地正式版，
+// 也能测"部署在子路径下"的情况（Cloudflare Pages 是子域名的根，
+// 但用户也可能挂在别的路径后面）。
+const BASE = process.env.BASE ?? 'http://127.0.0.1:5181'
 const EMAIL = 'huamidev@gmail.com'
 const PASSWORD = '88888888'
 const OUT = '/tmp/shots'
