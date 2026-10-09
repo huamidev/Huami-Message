@@ -241,13 +241,14 @@ final class SupabaseAuthService: AuthService {
             if let refreshToken, !refreshToken.isEmpty,
                let renewed = await renewAccessToken(refreshToken: refreshToken) {
                 usableToken = renewed
-                // 顺便把钥匙串里的那份也换成新的，下次启动就不用再换一遍
-                saveSession(StoredSession(accessToken: renewed,
-                                          refreshToken: refreshToken,
-                                          account: currentAccount() ?? Account(id: UUID(),
-                                                                               email: "",
-                                                                               displayName: "",
-                                                                               avatarSeed: 0)))
+                // ⚠️ **这里不要自己 saveSession。**
+                //
+                // 我刚写的时候用了一个占位的 Account（空昵称、空邮箱），
+                // 那会把账号列表里存的真实资料**覆盖成空白** ——
+                // 用户会看到一个没有名字的条目。
+                //
+                // 而且根本不需要：下面 finishSignIn 本来就会
+                // 用**真实的**用户资料存一次会话。多存一次只有坏处。
             }
         }
         client.setSession(accessToken: usableToken, userID: nil)
