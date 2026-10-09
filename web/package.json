@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "rm -rf dist && rm -f public/_redirects && tsc -b && vite build && rm -f dist/_redirects && ls -1 dist",
     "preview": "vite preview"
   },
   "dependencies": {
