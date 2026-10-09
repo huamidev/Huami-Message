@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { Conversation, Message, Profile, UUID } from './types'
+import { countUnread } from './readState'
 
 /// 和服务器打交道的地方，都收在这一个文件里。
 ///
@@ -66,6 +67,17 @@ export async function loadConversations(myID: UUID): Promise<Conversation[]> {
     if (key && !lastByConversation.has(key)) lastByConversation.set(key, m)
   }
 
+  // 按会话分组（每组的顺序就是时间倒序，上面查的时候已经排好了）——
+  // 未读数要按会话数，不能只数"最近 300 条里有几条"
+  const byConversation = new Map<UUID, Message[]>()
+  for (const m of recent) {
+    const key = conversationKeyOf(m, myID)
+    if (!key) continue
+    const list = byConversation.get(key)
+    if (list) list.push(m)
+    else byConversation.set(key, [m])
+  }
+
   const direct: Conversation[] = (profiles ?? []).map((p) => {
     const last = lastByConversation.get(p.id)
     return {
@@ -78,7 +90,7 @@ export async function loadConversations(myID: UUID): Promise<Conversation[]> {
       avatarURL: p.avatar_url,
       lastMessage: last ? preview(last) : '',
       lastTime: last?.created_at ?? '',
-      unread: 0,
+      unread: countUnread(myID, p.id, byConversation.get(p.id) ?? []),
     }
   })
 
@@ -93,7 +105,7 @@ export async function loadConversations(myID: UUID): Promise<Conversation[]> {
       avatarURL: null,
       lastMessage: last ? preview(last) : '',
       lastTime: last?.created_at ?? '',
-      unread: 0,
+      unread: countUnread(myID, g.id, byConversation.get(g.id) ?? []),
     }
   })
 

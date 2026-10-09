@@ -40,6 +40,11 @@ if (hasList > 0) {
   console.log('   会话:', names.map((n, i) => `${n}(${previews[i] ?? ''})`).join(' / '))
 }
 
+// ②b 未读红点（打开之前）
+const badgesBefore = await page.locator('.conv .badge').count()
+const badgeTexts = await page.locator('.conv .badge').allInnerTexts()
+console.log('②b 打开前的未读红点:', badgesBefore, badgeTexts.length ? `（${badgeTexts.join(', ')}）` : '')
+
 // ③ 进第一个会话
 if (hasList > 0) {
   await page.locator('.conv').first().click()
@@ -78,6 +83,17 @@ if (hasList > 0) {
     console.log('④ 发出去的消息出现在页面上:', sent > 0 ? '✓' : '✗')
   }
 }
+
+// ③b 回到列表，未读红点应该少了（刚打开的那个会话被标记成已读）
+await page.locator('.chat-topbar .icon-btn').first().click()
+await page.waitForTimeout(1600)
+const badgesAfter = await page.locator('.conv .badge').count()
+console.log('③b 看过之后的红点:', badgesAfter,
+            badgesAfter < badgesBefore ? '✓ 少了（已读生效）'
+              : (badgesBefore === 0 ? '（本来就没有未读，测不到）' : '✗ 没变化'))
+await shot('3b-红点已清')
+await page.locator('.conv').first().click()
+await page.waitForTimeout(1500)
 
 // ④a 撤回刚发的那条（长按 = contextmenu）
 const lastMine = page.locator('.bubble.mine').last()

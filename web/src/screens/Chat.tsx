@@ -7,6 +7,7 @@ import {
   recallMessage,
 } from '../lib/api'
 import { startRecording, formatSeconds } from '../lib/audio'
+import { markRead } from '../lib/readState'
 import PolishSheet from '../components/PolishSheet'
 import GroupInfo from './GroupInfo'
 import AssistantSheet from '../components/AssistantSheet'
@@ -112,6 +113,15 @@ export default function Chat({
       supabase.removeChannel(channel)
     }
   }, [conversation.id, myID])
+
+  // ── 打开就把"读到这儿了"记下来 ──
+  //
+  // 放在加载之后，而不是打开的那一刻：加载要几百毫秒，
+  // 如果一进来就记成"读完了"，那期间新到的消息会被算成已读 ——
+  // 用户明明没看见。
+  useEffect(() => {
+    if (messages.length > 0) markRead(myID, conversation.id)
+  }, [myID, conversation.id, messages.length])
 
   // ── 自动滚到底 ──
   //

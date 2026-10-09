@@ -67,7 +67,17 @@ export default function Home({ session }: { session: Session }) {
         session={session}
         conversation={opened}
         friends={conversations ?? []}
-        onBack={() => setOpened(null)}
+        onBack={() => {
+          // ⚠️ **回来时要重新拉一次。**
+          //
+          // 未读数是"列表这份数据"的一部分，而在聊天页里把它标记成已读
+          // 只改了 localStorage —— 列表那份 state 还是旧的，
+          // 红点会一直挂在那儿。
+          //
+          // 顺带也把"在聊天期间对方又发来的消息"补上。
+          setOpened(null)
+          reload()
+        }}
         onChanged={reload}
       />
     )
