@@ -455,9 +455,28 @@ final class SupabaseAuthService: AuthService {
     // MARK: - 退出
 
     func signOut() async {
-        // 先告诉服务器作废这个 token。
-        // 失败也无所谓 —— 本地照样清干净，用户要的是"我退出了"。
-        try? await client.post("/auth/v1/logout", body: EmptyBody())
+        // ⚠️ **scope=local，不是默认的 global。**
+        //
+        // 【为什么 —— 这是一个把整个功能卡死的坑】
+        //
+        // Supabase 的 logout 默认会**全局吊销这个会话**：access token 和
+        // refresh token 一起作废。也就是说，**退出的那一刻，
+        // 我们刚存进"账号列表"的那份凭证就被服务器吊销了**。
+        //
+        // 于是"记住账号、一键切回"永远不可能成功 ——
+        // 用户点账号列表里的账号，服务器说的是：
+        //     Invalid Refresh Token: Refresh Token Not Found
+        // 而这不是时序问题、不是过期问题，是逻辑上的死结：
+        // **我们一边把凭证存起来，一边在存完的一瞬间把它作废。**
+        //
+        // scope=local 只清"这台设备上这一份"，refresh token 在服务器上仍然有效，
+        // 所以账号列表里那份还能用来换新的访问凭证。
+        //
+        // 这也是"退出登录"在用户心里的含义：**离开这个账号，
+        // 不是把这个账号注销掉。**
+        try? await client.post("/auth/v1/logout",
+                               query: [URLQueryItem(name: "scope", value: "local")],
+                               body: EmptyBody())
         client.setSession(accessToken: nil, userID: nil)
         cachedAccount = nil
         Keychain.delete(Self.sessionKey)
