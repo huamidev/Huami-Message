@@ -105,9 +105,18 @@ export async function polish(
 /// 润色和小助手走的是同一个云函数、同一条 SSE 通道，只是 mode 不同。
 /// 读流的逻辑（buffer、半行、跨域、401）一模一样 ——
 /// 写两遍就意味着以后修一个 bug 要记得修两处。
+/// 服务器发回来的一条事件。
+///
+/// 只声明我们真的会读的两个字段 —— **不认识的 type 一律忽略**，
+/// 服务器以后加了新事件，老客户端不该因此崩掉。
+export interface AIEvent {
+  type: string
+  value?: unknown
+}
+
 export async function streamAI(
   body: Record<string, unknown>,
-  onEvent: (event: any) => void,
+  onEvent: (event: AIEvent) => void,
 ): Promise<void> {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
@@ -167,7 +176,7 @@ export async function streamAI(
 ///
 /// **不认识的 type 一律忽略**，不要抛错 ——
 /// 服务器以后加了新类型，老客户端不该因此崩掉。
-function parseLine(line: string): any | null {
+function parseLine(line: string): AIEvent | null {
   const trimmed = line.trim()
   if (!trimmed.startsWith('data:')) return null
   const payload = trimmed.slice(5).trim()

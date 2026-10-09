@@ -79,10 +79,6 @@ export function hideMessage(userID: string, messageID: string): void {
   localStorage.setItem(hideKey(userID), JSON.stringify([...set]))
 }
 
-export function isHidden(userID: string, messageID: string): boolean {
-  return hiddenSet(userID).has(messageID)
-}
-
 /// 过滤掉我删过的那些。
 export function withoutHidden<T extends { id: string }>(userID: string, items: T[]): T[] {
   const set = hiddenSet(userID)
