@@ -162,7 +162,18 @@ final class SwiftDataLocalStore: LocalStore {
 
     func loadConversations() -> [Conversation] {
         // 好友数量很少（几十个），全查没问题
-        let friends = owned(fetchAll(StoredFriend.self)) { $0.ownerIDString }
+        let allFriends = fetchAll(StoredFriend.self)
+        let friends = owned(allFriends) { $0.ownerIDString }
+
+        // ⚠️ 这两行是排查用的：owner 决定**所有数据可不可见**。
+        //    查"存进去了但读不出来"这类问题时，先看这两个数对不对得上，
+        //    比读十遍过滤逻辑都快。
+        if allFriends.count != friends.count {
+            let owners = Set(allFriends.map { $0.ownerIDString })
+            AppLog.error(.data, "会话可见性不符：库里共 \(allFriends.count) 行，"
+                        + "当前 owner=[\(ownerIDString)] 只可见 \(friends.count) 行；"
+                        + "库里出现过的 owner=\(owners)")
+        }
 
         return friends
             .map { stored in
@@ -190,6 +201,7 @@ final class SwiftDataLocalStore: LocalStore {
     // MARK: 写
 
     func save(friend: Friend) {
+        AppLog.info(.data, "存会话：\(friend.displayName) 归属=[\(ownerIDString)] 类型=\(friend.kind.rawValue)")
         // 已经被用户删掉的好友，不能被同步重新拉回来
         guard !deletedIDs().contains(friend.id) else { return }
 

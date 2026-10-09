@@ -49,12 +49,6 @@
             ReferencedContainer = "container:Huami Message.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <CommandLineArguments>
-         <CommandLineArgument
-            argument = "-createGroup &quot;&#x6d4b;&#x8bd5;&#x7fa4;,huami&quot;"
-            isEnabled = "YES">
-         </CommandLineArgument>
-      </CommandLineArguments>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

@@ -179,10 +179,10 @@ final class ChatStore {
             // 而这两种情况的排查方向完全相反：
             //   服务器返回 0  → 好友关系没建上（服务端问题）
             //   服务器返回 1  → 建上了，是本地没存进去（墓碑之类）
-            AppLog.info(.data, "服务器返回 \(remoteConversations.count) 位好友")
+            AppLog.info(.data, "服务器返回 \(remoteConversations.count) 段会话（含群）")
             guard !remoteConversations.isEmpty else {
                 // 出声。这里静默返回过，表现是"列表空的、但不知道为什么"。
-                AppLog.error(.data, "服务器返回 0 位好友 —— 界面保持原样，但这是个异常")
+                AppLog.error(.data, "服务器返回 0 段会话 —— 界面保持原样，但这是个异常")
                 return
             }
 
@@ -191,7 +191,7 @@ final class ChatStore {
             }
             dropFriendsMissingOnServer(Set(remoteConversations.map { $0.friend.id }))
             refreshFromLocal()
-            AppLog.info(.data, "好友资料已刷新（\(remoteConversations.count) 位）")
+            AppLog.info(.data, "会话已落库（\(remoteConversations.count) 段，含群）")
         } catch {
             // 刷新失败**不打扰用户** —— 他只是切了个前台，
             // 弹一个"刷新失败"比不刷新还烦。名字旧一点没关系。
