@@ -191,7 +191,16 @@ final class SupabaseAuthService: AuthService {
         // 只换凭证，**不动身份** —— StoredSession 里没存 userID，
         // 而客户端身上已经有了（登录时设的）。身份本来也没变，
         // 换掉反而可能设成 nil，出现"用新钥匙开旧门"。
-        client.setSession(accessToken: session.accessToken, userID: client.currentUserID)
+        // ⚠️ 只换凭证，**不要把身份覆写成 nil**。
+        //    如果此刻 currentUserID 恰好是空的（比如刷新发生在登录流程中间），
+        //    直接 setSession(accessToken:, userID: nil) 会把身份抹掉 ——
+        //    之后所有请求都变成"没登录"，而 token 明明是好的。
+        if let currentUserID = client.currentUserID {
+            client.setSession(accessToken: session.accessToken, userID: currentUserID)
+        } else {
+            AppLog.error(.network, "刷新 token 时客户端没有用户 ID —— 身份可能已丢失")
+            client.setSession(accessToken: session.accessToken, userID: client.currentUserID)
+        }
         return true
     }
 

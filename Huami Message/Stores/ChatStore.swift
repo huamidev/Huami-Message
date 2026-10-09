@@ -176,7 +176,11 @@ final class ChatStore {
             //   服务器返回 0  → 好友关系没建上（服务端问题）
             //   服务器返回 1  → 建上了，是本地没存进去（墓碑之类）
             AppLog.info(.data, "服务器返回 \(remoteConversations.count) 位好友")
-            guard !remoteConversations.isEmpty else { return }
+            guard !remoteConversations.isEmpty else {
+                // 出声。这里静默返回过，表现是"列表空的、但不知道为什么"。
+                AppLog.error(.data, "服务器返回 0 位好友 —— 界面保持原样，但这是个异常")
+                return
+            }
 
             for convo in remoteConversations {
                 local.save(friend: convo.friend)

@@ -36,8 +36,18 @@ final class SupabaseChatService: ChatService {
     // ========================================================================
 
     func loadConversations() async throws -> [Conversation] {
-        // 没登录就返回空的 —— 不该崩，也不该发没意义的请求
-        guard let myID else { return [] }
+        // 没登录就返回空的 —— 不该崩，也不该发没意义的请求。
+        //
+        // ⚠️ **但这个"静默返回空"害过我**：
+        //    客户端没拿到 myID 时，这里一行日志都没有，
+        //    上面看到的现象是"好友列表空的、消息收不到"，
+        //    而服务器那边一切正常 —— 完全看不出是哪一层的问题。
+        //
+        //    所以这里必须出声。没登录不是"正常情况"。
+        guard let myID else {
+            AppLog.error(.network, "拉会话列表：客户端还没拿到自己的用户 ID（没登录成功？）")
+            return []
+        }
         let me = myID.uuidString.lowercased()
 
         // ① 我加的好友。
