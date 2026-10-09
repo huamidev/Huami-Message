@@ -70,10 +70,9 @@ struct MessageBubble: View {
                 } label: {
                     Avatar(initial: sender.initial,
                            seed: sender.avatarSeed,
-                           // 用户说"可以适当放大"。
-                           // 34 偏小，40 和输入栏那两个圆钮同尺寸，
-                           // 整屏看下来比例更稳。
-                           size: 40,
+                           // 34：昵称去掉之后这个尺寸刚好，
+                           // 40 会显得比气泡还高出一头。
+                           size: 34,
                            url: sender.avatarURL)
                 }
                 .buttonStyle(.plain)
@@ -87,15 +86,17 @@ struct MessageBubble: View {
             // 这样时间永远挨着对话中间，而不是贴着屏幕边缘。
 
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
-                // 群聊里"别人发的"要标出是谁 —— 三个人说话时，
-                // 只知道"不是我"等于不知道。名字放在气泡正上方。
-                if !isMine, let sender {
-                    Text(sender.name)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.textTertiary)
-                        .lineLimit(1)
-                        .padding(.leading, 4)
-                }
+                // ── 群里**不显示昵称** ──
+                //
+                // 用户的判断是对的：这一列只剩气泡之后，
+                // 头像正好和消息对齐 —— 上面原来那一行昵称把气泡往下推，
+                // 头像怎么摆都会多出一截空。
+                //
+                // 认人靠头像（点一下能看资料页）。这是用户自己定的取舍：
+                // "不然我怎么知道是谁发的" → 点头像就知道。
+                //
+                // 以后要是想加回来，**别放在气泡外面** ——
+                // 那会让头像和消息错位。可以放进气泡里当第一行小字。
 
                 // ── 第二层：气泡和时间**贴底对齐** ──
                 //
