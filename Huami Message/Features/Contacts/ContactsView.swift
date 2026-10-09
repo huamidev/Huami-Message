@@ -17,6 +17,7 @@ struct ContactsView: View {
     @State private var path: [Conversation] = []
     @State private var showAddFriend = false
     @State private var showRequests = false
+    @State private var showCreateGroup = false
     @State private var copied = false
 
     /// 按名字排 —— 找人时人是按字母/拼音顺序回忆的，不是按聊天时间
@@ -39,6 +40,7 @@ struct ContactsView: View {
                 ScrollView {
                     VStack(spacing: 14) {
                         newFriendsCard
+                        createGroupCard
                         myCodeCard
                         if sorted.isEmpty { emptyHint } else { friendList }
                     }
@@ -64,6 +66,10 @@ struct ContactsView: View {
                 }
             }
             // 环境要显式传进弹窗 —— 这个坑踩过两次了
+            .sheet(isPresented: $showCreateGroup) {
+                CreateGroupView()
+                    .environment(store)
+            }
             .sheet(isPresented: $showRequests) {
                 FriendRequestsView()
                     .environment(store)
@@ -83,6 +89,43 @@ struct ContactsView: View {
     ///
     /// 单独摆在最上面，带一个数字 —— 因为它是**待办**，不是联系人。
     /// 没有待办时它也在，但安安静静的（没有数字）。
+    /// 发起群聊。
+    ///
+    /// 放在联系人页，而不是消息页右上角那个加号里 ——
+    /// 建群的**原料是好友**，而这一页就是好友所在的地方。
+    /// 从"选人"的语境里点"建群"，比从"消息列表"里点更顺。
+    private var createGroupCard: some View {
+        Button {
+            Haptics.tap()
+            showCreateGroup = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.3")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 38, height: 38)
+                    .background(Theme.accentSoft,
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                Text("发起群聊")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary.opacity(0.6))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.surface,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var newFriendsCard: some View {
         Button {
             Haptics.tap()

@@ -121,7 +121,8 @@ final class SupabaseChatService: ChatService {
                     friend: Friend(id: profile.id,
                                    name: profile.displayName,
                                    avatarSeed: profile.avatarSeed,
-                                   avatarURL: profile.avatarUrl.flatMap(URL.init(string:))),
+                                   avatarURL: profile.avatarUrl.flatMap(URL.init(string:)),
+                                   username: profile.username ?? ""),
                     lastMessage: last?.asMessage(myID: myID).preview ?? "",
                     lastTime: last?.createdAt ?? .distantPast,
                     // 未读数是**本地**记的：服务器没有已读回执，

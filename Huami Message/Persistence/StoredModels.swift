@@ -54,6 +54,9 @@ final class StoredFriend {
     /// 群名。一对一为空。
     var title: String?
 
+    /// 对方的用户名。理由见 Friend.username。
+    var username: String = ""
+
     /// 未读消息数。
     ///
     /// 严格说「未读」属于「会话」而不是「好友」，但第一版只有一对一，
@@ -102,13 +105,15 @@ final class StoredFriend {
         self.avatarURLString = friend.avatarURL?.absoluteString
         self.kindRaw = friend.kind.rawValue
         self.title = friend.title
+        self.username = friend.username
     }
 
     var asFriend: Friend {
         Friend(id: id, name: name, avatarSeed: avatarSeed,
             avatarURL: avatarURLString.flatMap(URL.init(string:)),
             kind: ConversationKind(rawValue: kindRaw) ?? .direct,
-            title: title)
+            title: title,
+            username: username)
     }
 }
 

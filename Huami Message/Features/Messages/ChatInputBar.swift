@@ -255,7 +255,7 @@ struct ChatInputBar: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: Self.controlHeight)
-        .pillGlass()
+        .pillGlassBackground()
         .contentShape(Capsule())
         // ── 按住说话 ──
         //
@@ -389,7 +389,7 @@ struct ChatInputBar: View {
         .padding(.vertical, 7)
         // 和两边圆钮**一模一样的高度**，三个零件才一般齐
         .frame(height: Self.controlHeight)
-        .pillGlass()
+        .pillGlassBackground()
         // **输入框也不加底。**
         //
         // 这是最后一块 —— 前面拆了四次都留着它，所以屏幕中间
@@ -506,7 +506,7 @@ extension TextSelection {
 // ─────────────────────────────────────────────────────────────
 
 
-private extension View {
+extension View {
     /// 给"长条"零件套上一层尽量接近液态玻璃的底。
     ///
     /// 圆钮那边直接 `.buttonStyle(.glass)` 就够了（它们本来就是 Button）。
@@ -516,7 +516,7 @@ private extension View {
     /// "自己调一个看起来差不多的底"上面栽了四次 —— 能用系统的就用系统的，
     /// 用不了的就用系统材质，别手配色值。
     @ViewBuilder
-    func pillGlass() -> some View {
+    func pillGlassBackground() -> some View {
         // 真玻璃。
         //
         // API 在 **SwiftUICore** 里，不在 SwiftUI 里 —— 我第一次只搜了

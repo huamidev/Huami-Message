@@ -118,17 +118,30 @@ struct Friend: Identifiable, Hashable {
     var avatarSeed: Int
 
     init(id: UUID = UUID(), name: String, avatarSeed: Int, avatarURL: URL? = nil,
-         kind: ConversationKind = .direct, title: String? = nil) {
+         kind: ConversationKind = .direct, title: String? = nil,
+         username: String = "") {
         self.id = id
         self.name = name
         self.avatarSeed = avatarSeed
         self.avatarURL = avatarURL
         self.kind = kind
         self.title = title
+        self.username = username
     }
 
     /// 名字的第一个字，暂时当头像用
     var initial: String { String(displayName.prefix(1)) }
+
+    /// 对方的用户名（`@test002` 那个）。
+    ///
+    /// 【为什么必须存它 —— 建群时才知道】
+    ///
+    /// 昵称是给人看的，用户名才是服务器的身份。
+    /// 而 create_group 是按**用户名**找人的 —— 拿昵称去查只会报
+    /// "找不到用户名：huami888"（那是昵称，不是用户名）。
+    ///
+    /// 所以这份数据必须一路从服务器带到界面上，不能到用的时候再去查。
+    var username: String = ""
 
     /// 一对一还是群聊。**老数据一律当成 .direct**（默认值）。
     var kind: ConversationKind = .direct
