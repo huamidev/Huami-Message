@@ -85,11 +85,6 @@ struct MessageBubble: View {
             // 我发的消息靠右，所以"内侧"是它的左边；
             // 对方发的靠左，内侧是它的右边。
             // 这样时间永远挨着对话中间，而不是贴着屏幕边缘。
-            if isMine {
-                metaRow
-                    .alignmentGuide(VerticalAlignment.center) { $0[.bottom] }   // 按底边对齐
-                    .padding(.trailing, 6)
-            }
 
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
                 // 群聊里"别人发的"要标出是谁 —— 三个人说话时，
@@ -102,6 +97,12 @@ struct MessageBubble: View {
                         .padding(.leading, 4)
                 }
 
+                // ── 第二层：气泡和时间**贴底对齐** ──
+                //
+                // 外层管"头像 vs 整列"（居中），这一层管"气泡 vs 时间"（贴底）。
+                // 两层各管各的，才不会互相牵扯 ——
+                // 我第一版把两件事塞进同一个 HStack，结果时间跑到气泡中间去了。
+                HStack(alignment: .bottom, spacing: 6) {
                 if let imageURL = message.imageURL {
                     // 图片消息。
                     //
@@ -132,6 +133,9 @@ struct MessageBubble: View {
                         .opacity(message.status == .sending ? 0.72 : 1)
                 }
 
+                if isMine { metaRow }
+                if !isMine { metaRow }
+                }
             }
             // 长按气泡 → 弹出操作菜单
             .contextMenu {
@@ -146,11 +150,6 @@ struct MessageBubble: View {
                 }
             }
 
-            if !isMine {
-                metaRow
-                    .alignmentGuide(VerticalAlignment.center) { $0[.bottom] }   // 按底边对齐
-                    .padding(.leading, 6)
-            }
             if !isMine { Spacer(minLength: 56) }
         }
         .transition(
@@ -187,8 +186,7 @@ struct MessageBubble: View {
             if isMine { statusView }
         }
         .padding(.horizontal, 4)
-        // 和气泡底边对齐时，往上抬一点点看着更稳
-        //（文字基线比气泡底边低一点，不抬会显得往下掉）
+        // 往上抬一点点：文字的基线比气泡底边低，不抬会显得往下掉
         .padding(.bottom, 3)
     }
 
