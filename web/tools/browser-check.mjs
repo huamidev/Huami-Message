@@ -1,4 +1,5 @@
 import { chromium } from 'playwright'
+import jsQR from 'jsqr'
 
 const BASE = 'http://127.0.0.1:5181'
 const EMAIL = 'huamidev@gmail.com'
@@ -167,6 +168,42 @@ await page.click('.tab:has-text("联系人")')
 await page.waitForTimeout(2000)
 await shot('6-联系人')
 console.log('⑤ 联系人页有「加好友」:', await page.locator('text=加好友').count() > 0 ? '✓' : '✗')
+
+// ⑤b 我的二维码 —— **把码解出来看里面到底装了什么**
+//
+// 二维码装错了是**静默失败**：界面上一切正常，朋友扫了加不上。
+// 所以必须真的解码，不能只看"有张图"。
+const shownName = (await page.locator('.my-username').innerText().catch(() => '')).trim()
+const qrImg = page.locator('img[alt="我的二维码"]')
+if (await qrImg.count()) {
+  const src = await qrImg.getAttribute('src')
+  const decoded = await page.evaluate(async (dataUrl) => {
+    const img = new Image()
+    img.src = dataUrl
+    await img.decode()
+    const c = document.createElement('canvas')
+    c.width = img.width; c.height = img.height
+    const ctx = c.getContext('2d')
+    ctx.drawImage(img, 0, 0)
+    const d = ctx.getImageData(0, 0, c.width, c.height)
+    return { w: c.width, h: c.height, data: Array.from(d.data) }
+  }, src)
+  const code = jsQR(new Uint8ClampedArray(decoded.data), decoded.w, decoded.h)
+  console.log('⑤b 二维码里显示的用户名:', shownName, '| 尺寸', decoded.w + 'x' + decoded.h)
+  console.log('    解出来的内容:', code ? code.data : '✗ 解不出来')
+  if (code) {
+    const parsed = new URL(code.data)
+    // ⚠️ parsed.protocol **已经带冒号**了（'huami:'）。
+    //    我第一版写成 parsed.protocol + ':' === 'huami:'，
+    //    拼出来是 'huami::' —— 于是二维码明明是对的，断言却报错。
+    //    **断言写错了比没断言更坏**：它会让人去改一个本来正确的东西。
+    const ok = parsed.protocol === 'huami:' && parsed.host === 'add' &&
+               parsed.searchParams.get('u') === shownName.replace(/^@/, '')
+    console.log('    ⇒', ok ? '✓ 链接格式对，用户名和页面上一致' : '✗ 链接内容不对')
+  }
+} else {
+  console.log('⑤b 二维码 ✗ 页面上没有')
+}
 
 // ⑥ 我的页
 await page.click('.tab:has-text("我")')

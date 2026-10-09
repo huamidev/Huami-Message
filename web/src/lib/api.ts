@@ -456,3 +456,26 @@ export async function recallMessage(id: UUID): Promise<void> {
     .eq('id', id)
   if (error) throw error
 }
+
+/// 我自己的资料。
+///
+/// 【为什么必须从 profiles 里查，不能从登录会话里拿】
+///
+/// 这是个真 bug：网页版原来是从 `session.user.user_metadata.username`
+/// 取用户名的，但**那个字段根本不存在**（Supabase 的 user_metadata 里
+/// 只有 email / email_verified 这些）。于是代码回退成"邮箱的前缀" ——
+/// 界面上显示 @huamidev，而真实用户名是 @huami。
+///
+/// 用户看到的是自己的名字，不会觉得有问题；但**二维码会照着这个错的
+/// 名字生成**，朋友扫了根本加不上他。
+///
+/// 用户名的唯一真相在 profiles 表里。
+export async function loadMyProfile(myID: UUID): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', myID)
+    .maybeSingle()
+  if (error) throw error
+  return (data as Profile) ?? null
+}

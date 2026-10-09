@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   findProfile, sendFriendRequest, loadIncomingRequests, respondToRequest,
-  normalizeUsername, usernameProblem,
+  normalizeUsername, usernameProblem, loadMyProfile,
 } from '../lib/api'
+import QRCode from 'qrcode'
 import type { Profile } from '../lib/types'
 import Avatar from '../components/Avatar'
 
@@ -22,6 +23,11 @@ export default function Contacts({ session }: { session: Session }) {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
 
+  /// 我自己的用户名（从 profiles 查，不是从登录会话猜）
+  const [myUsername, setMyUsername] = useState<string | null>(null)
+  /// 二维码图片（data URL）
+  const [qr, setQr] = useState<string | null>(null)
+
   const [requests, setRequests] = useState<
     { id: string; fromID: string; fromName: string; fromUsername: string; note: string | null }[]
   >([])
@@ -38,6 +44,22 @@ export default function Contacts({ session }: { session: Session }) {
   }
 
   useEffect(() => {
+    // 我的用户名 + 我的二维码
+    loadMyProfile(myID)
+      .then(async (profile) => {
+        const name = profile?.username
+        if (!name) return
+        setMyUsername(name)
+        // 二维码里装的是**链接**不是纯用户名：
+        // 系统相机扫到链接会直接打开 App 并落到"加好友"，
+        // 扫到一串纯文字只会显示出来。（iOS 版同一条链接格式）
+        setQr(await QRCode.toDataURL(`huami://add?u=${name}`, {
+          width: 220, margin: 1,
+          color: { dark: '#1a1a1a', light: '#ffffff' },
+        }))
+      })
+      .catch(() => { /* 拿不到就不显示这一块，不打扰用户 */ })
+
     refreshRequests()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myID])
@@ -159,27 +181,23 @@ export default function Contacts({ session }: { session: Session }) {
           {notice && <p className={notice.ok ? 'msg ok' : 'msg error'}>{notice.text}</p>}
         </section>
 
-        {/* ── 我的用户名 ── */}
-        <section className="card">
-          <h3>我的用户名</h3>
-          <p className="my-username">@{myUsernameOf(session)}</p>
-          <p className="muted small">
-            把这个名字给对方，他就能加你。
-            （二维码在下一个里程碑 —— iOS 版已经能扫码了。）
-          </p>
+        {/* ── 我的二维码 ── */}
+        <section className="card" style={{ textAlign: 'center' }}>
+          <h3 style={{ textAlign: 'left' }}>我的二维码</h3>
+          {qr ? (
+            <>
+              <img src={qr} alt="我的二维码" style={{ width: 190, height: 190, margin: '6px auto' }} />
+              <p className="my-username">@{myUsername}</p>
+              <p className="muted small">
+                让对方用相机扫这个码，会自动打开 App 并落到「加好友」。
+              </p>
+            </>
+          ) : (
+            <p className="muted small">二维码要等资料加载出来…</p>
+          )}
         </section>
       </div>
     </div>
   )
 }
 
-/// 从会话里取我自己的用户名。
-///
-/// 邮箱登录的用户在 user_metadata 里不一定有 username ——
-/// 拿不到就先显示邮箱前缀，别显示空白。
-function myUsernameOf(session: Session): string {
-  const meta = session.user.user_metadata as Record<string, unknown> | undefined
-  const name = meta?.username
-  if (typeof name === 'string' && name) return name
-  return (session.user.email ?? '').split('@')[0]
-}
