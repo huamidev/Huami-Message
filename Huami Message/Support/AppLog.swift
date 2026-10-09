@@ -41,6 +41,26 @@ enum AppLog {
         Logger(subsystem: subsystem, category: module.rawValue)
     }
 
+    /// 进程启动的那一刻。用单调时钟，不受用户改系统时间影响。
+    private static let launchMark = ContinuousClock.now
+
+    /// 「启动后多久」。
+    ///
+    /// 【为什么每条日志都要带它】
+    ///
+    /// 用户报"第一次进入偶尔有点卡"，而"卡"是个没有刻度的词 ——
+    /// 是启动慢？还是点进聊天慢？差 200 毫秒还是 2 秒？
+    ///
+    /// 每条日志前面挂一个从启动算起的毫秒数，就不用问了：
+    /// **相邻两行的时间差，就是那一段的耗时。**
+    /// 想量哪里，在那一头一尾各写一行日志就够了。
+    private static var sinceLaunch: String {
+        let d = ContinuousClock.now - launchMark
+        let ms = Double(d.components.seconds) * 1000
+            + Double(d.components.attoseconds) / 1_000_000_000_000_000
+        return "+" + String(format: "%.0f", ms) + "ms"
+    }
+
     /// 正常信息（「加载了 12 个会话，耗时 8ms」这种）
     static func info(_ module: Module, _ message: String) {
         logger(module).info("\(message)")
@@ -55,14 +75,14 @@ enum AppLog {
         // 排查信息**必须真的到达对方眼睛**，否则等于没写。
         //
         // 两样都留：Logger 用于正经排查，print 保证"看得见"。
-        print("[\(module.rawValue)] \(message)")
+        print("[\(module.rawValue)] \(sinceLaunch) \(message)")
     }
 
     /// 出问题了。**只记录，不抛出去** ——
     /// 存不进数据库不该让 App 崩掉，用户还能继续用，只是这次没存下来。
     static func error(_ module: Module, _ message: String) {
         logger(module).error("\(message)")
-        print("[\(module.rawValue)] ⚠️ \(message)")
+        print("[\(module.rawValue)] \(sinceLaunch) ⚠️ \(message)")
     }
 }
 

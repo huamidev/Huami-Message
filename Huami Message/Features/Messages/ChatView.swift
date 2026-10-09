@@ -345,9 +345,16 @@ struct ChatView: View {
         // 而气泡是**每帧都要读**的，绝不能在渲染路径里发请求。
         // 绑定 id 是为了换会话时重新拉一次。
         .task(id: conversation.friend.id) {
+            let watch = Stopwatch()
             if conversation.friend.kind == .group {
                 _ = await store.members(of: conversation.friend.id)
             }
+            // 进聊天页要多久 —— 用户说"点进某个聊天有点卡"，
+            // 这一行把它变成数字。相邻两行日志一减就是耗时，
+            // 不用再靠感觉描述。
+            AppLog.info(.data, "进聊天页：\(conversation.friend.displayName)｜"
+                        + "本地已有 \(store.messages(with: conversation.friend.id).count) 条消息｜"
+                        + "准备耗时 \(Stopwatch.format(watch.milliseconds))")
         }
         .navigationTitle(conversation.friend.displayName)
         .navigationBarTitleDisplayMode(.inline)
@@ -449,7 +456,19 @@ struct ChatView: View {
             Text("消息会从你的手机上永久删除，无法恢复。")
         }
         .onAppear {
-            store.markRead(conversation.friend.id)
+            // ⚠️ **不要在这里同步写数据库。**
+            //
+            // markRead → setUnread → local.setUnread 是一次**同步的**
+            // SwiftData 写入 + commit。而 onAppear 正好发生在**推入动画中间** ——
+            // 主线程被这一步占住，动画就会顿一下。
+            //
+            // 清个未读红点完全不急，晚 0.4 秒没有任何人能察觉，
+            // 但省下来的是转场那几帧。用户报的"点进聊天有点卡"，
+            // 这是嫌疑之一（不一定是全部，日志会告诉我们）。
+            Task {
+                try? await Task.sleep(for: .milliseconds(400))
+                store.markRead(conversation.friend.id)
+            }
         }
         // 开发用：
         //   -openPolish 1  自动填一句示例并打开润色面板
