@@ -42,17 +42,21 @@ struct MessageBubble: View {
     private var isMine: Bool { message.sender == .me }
 
     var body: some View {
-        // ⚠️ **顶部对齐，不是底部对齐。**
+        // ── 对齐方式：头像**垂直居中** ──
         //
-        // 微信的排法是「头像和昵称在同一条水平线上」——
-        // 头像的顶边对齐昵称的顶边，然后气泡在下面展开。
+        // 试过两种，都不对：
+        //   · 底部对齐 → 头像掉到气泡底下，和昵称隔着整个气泡
+        //   · 顶部对齐 → 上面对齐了，但**下面空一大截**
+        //     （昵称那一行把气泡推下去，头像却只有那么高）
         //
-        // 用底部对齐的话，头像会掉到气泡底下，和昵称隔着一条气泡，
-        // 看着像两个不相关的东西（用户的原话："这太丑了"）。
+        // 微信确实是顶部对齐，但它的气泡普遍只有一两行 ——
+        // 一长就同样会露出下面那一截空。用户要的是"上下都别空太多"，
+        // 那答案就是居中：头像对着「昵称 + 气泡」这一整列的中线，
+        // 两边留的空一样多，看起来才是"嵌进去"的。
         //
-        // 但时间是**要贴底**的（和气泡底边齐平），
-        // 所以它单独用 alignmentGuide 把对齐基准从顶边改成底边。
-        HStack(alignment: .top, spacing: 0) {
+        // 时间仍然要贴底（和气泡底边齐平），所以它单独用
+        // alignmentGuide 把对齐基准换掉。
+        HStack(alignment: .center, spacing: 0) {
             if isMine { Spacer(minLength: 56) }
 
             // ── 头像：放在气泡**旁边**（微信那样），不是上面 ──
@@ -66,14 +70,14 @@ struct MessageBubble: View {
                 } label: {
                     Avatar(initial: sender.initial,
                            seed: sender.avatarSeed,
-                           size: 34,
+                           // 用户说"可以适当放大"。
+                           // 34 偏小，40 和输入栏那两个圆钮同尺寸，
+                           // 整屏看下来比例更稳。
+                           size: 40,
                            url: sender.avatarURL)
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 8)
-                // 昵称那一行本身有行高，头像顶边直接对齐容器顶边会显得偏高。
-                // 往下压一点点，视觉上和昵称在同一条线上。
-                .padding(.top, 2)
             }
 
             // ── 时间贴在内侧 ──
@@ -83,7 +87,7 @@ struct MessageBubble: View {
             // 这样时间永远挨着对话中间，而不是贴着屏幕边缘。
             if isMine {
                 metaRow
-                    .alignmentGuide(.top) { $0[.bottom] }   // 按底边对齐
+                    .alignmentGuide(VerticalAlignment.center) { $0[.bottom] }   // 按底边对齐
                     .padding(.trailing, 6)
             }
 
@@ -144,7 +148,7 @@ struct MessageBubble: View {
 
             if !isMine {
                 metaRow
-                    .alignmentGuide(.top) { $0[.bottom] }   // 按底边对齐
+                    .alignmentGuide(VerticalAlignment.center) { $0[.bottom] }   // 按底边对齐
                     .padding(.leading, 6)
             }
             if !isMine { Spacer(minLength: 56) }
