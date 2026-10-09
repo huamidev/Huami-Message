@@ -207,6 +207,15 @@ final class StoredMessage {
         self.audioURLString = message.audioURL?.absoluteString
         self.audioSeconds = message.audioSeconds
         self.senderIDString = message.senderID?.uuidString
+        // ⚠️ **这一行原来漏了，是"群消息全跑到右边"的原因。**
+        //
+        // isMine 决定气泡在左还是在右。它只在插入时设过一次，
+        // 而消息是会**被再次同步覆盖**的（比如服务端补了 sender_id），
+        // 不在这里更新的话，那条记录就永远停在第一次写入时的值。
+        //
+        // 这是同一个坑的第 N 次：**给数据库加字段时，
+        // 插入和更新两条路都要改。**（imageURLString / avatarURL 都栽过。）
+        self.isMine = message.sender == .me
         self.sentAt = message.sentAt
         self.polishedStyle = message.polishedWith?.rawValue
     }

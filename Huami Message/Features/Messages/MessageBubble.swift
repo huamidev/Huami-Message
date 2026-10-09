@@ -30,6 +30,9 @@ struct MessageBubble: View {
     /// 而不是显示一个猜的名字。宁可不显示，也不要显示错的。
     var sender: GroupMember? = nil
 
+    /// 点了头像之后要看的那个人的资料
+    @State private var openedProfile: GroupMember?
+
     /// 发送失败时，用户点"重试"会调它
     var onRetry: () -> Void = {}
 
@@ -42,21 +45,34 @@ struct MessageBubble: View {
         HStack(alignment: .bottom, spacing: 0) {
             if isMine { Spacer(minLength: 56) }
 
+            // ── 头像：放在气泡**旁边**（微信那样），不是上面 ──
+            //
+            // 为什么必须点得动：群里七八个人说话时，
+            // 光看头像认不出是谁，而"这个人是谁、能不能加他"是接着要问的问题。
+            if !isMine, let sender {
+                Button {
+                    Haptics.tap()
+                    openedProfile = sender
+                } label: {
+                    Avatar(initial: sender.initial,
+                           seed: sender.avatarSeed,
+                           size: 34,
+                           url: sender.avatarURL)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 8)
+                .padding(.bottom, 2)      // 和气泡底部对齐，看着稳
+            }
+
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
                 // 群聊里"别人发的"要标出是谁 —— 三个人说话时，
-                // 只知道"不是我"等于不知道。
+                // 只知道"不是我"等于不知道。名字放在气泡正上方。
                 if !isMine, let sender {
-                    HStack(spacing: 5) {
-                        Avatar(initial: sender.initial,
-                               seed: sender.avatarSeed,
-                               size: 18,
-                               url: sender.avatarURL)
-                        Text(sender.name)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Theme.textTertiary)
-                            .lineLimit(1)
-                    }
-                    .padding(.leading, 4)
+                    Text(sender.name)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
+                        .padding(.leading, 4)
                 }
 
                 if let imageURL = message.imageURL {
@@ -113,6 +129,13 @@ struct MessageBubble: View {
                 removal: .opacity
             )
         )
+    
+        // 点群成员头像 → 看他是谁。
+        // 挂在这里（body 的最外层），不是挂在气泡背景那个属性上 ——
+        // 挂在后者上编译不过（那不是 View 上下文）。
+        .sheet(item: $openedProfile) { member in
+            MemberProfileSheet(member: member)
+        }
     }
 
     // MARK: - 气泡下面那一行小字
@@ -183,5 +206,6 @@ struct MessageBubble: View {
                         .strokeBorder(Theme.separator, lineWidth: 0.8)
                 }
         }
+
     }
 }
