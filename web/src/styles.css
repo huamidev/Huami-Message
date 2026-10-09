@@ -416,3 +416,16 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
   font-size: 11px; font-weight: 700; color: var(--accent);
   letter-spacing: 0.5px; margin-bottom: 4px;
 }
+
+.avatar-btn {
+  position: relative; border: 0; background: transparent; padding: 0;
+  cursor: pointer; margin: 4px auto 0;
+}
+.avatar-hint {
+  position: absolute; right: -4px; bottom: -4px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface); color: var(--text-2);
+  font-size: 11px; font-weight: 600;
+  display: grid; place-items: center;
+  box-shadow: var(--card-shadow);
+}

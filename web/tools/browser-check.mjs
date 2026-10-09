@@ -241,6 +241,18 @@ await page.waitForTimeout(1200)
 await shot('7-我')
 console.log('⑥ 「我」页显示邮箱:', (await page.locator(`text=${EMAIL}`).count()) > 0 ? '✓' : '✗')
 
+// ⑥b 资料页要显示**真实的**用户名
+//
+// 这里踩过一个大坑：联系人页原来是从登录会话里猜用户名的，
+// 结果显示成邮箱前缀（@huamidev），而真名是 @huami。
+// 界面上看不出问题，但二维码会照错名字生成 —— 朋友扫了加不上。
+const meName = (await page.locator('.my-username').innerText().catch(() => '')).trim()
+const hasNameInput = await page.locator('.card input').count()
+console.log('⑥b 资料页用户名:', meName,
+            meName === '@huami' ? '✓（和二维码一致）' : '✗ 不对，应该是 @huami')
+console.log('    有昵称输入框:', hasNameInput > 0 ? '✓' : '✗')
+await shot('7b-我')
+
 // ⑦ Service Worker 注册了吗
 const sw = await page.evaluate(() => navigator.serviceWorker.getRegistrations().then((r) => r.length))
 console.log('⑦ Service Worker 注册数:', sw, sw > 0 ? '✓' : '✗（PWA 离线能力没有生效）')

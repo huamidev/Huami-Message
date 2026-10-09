@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabase'
 import Home from './Home'
 import Contacts from './Contacts'
+import Me from './Me'
 
 /// 主界面：底部三个 Tab。
 ///
@@ -41,25 +41,5 @@ function TabButton({
       <span className="tab-icon">{icon}</span>
       <span className="tab-label">{label}</span>
     </button>
-  )
-}
-
-function Me({ session }: { session: Session }) {
-  return (
-    <div className="app">
-      <header className="topbar"><h1>我</h1></header>
-      <div className="pad">
-        <section className="card">
-          <h3>账号</h3>
-          <p className="muted small">{session.user.email}</p>
-        </section>
-        <section className="card">
-          <button className="btn ghost" onClick={() => supabase.auth.signOut()}>退出登录</button>
-        </section>
-        <p className="muted small">
-          这一页的其余内容（改昵称、改头像、清聊天记录）是后面的里程碑。
-        </p>
-      </div>
-    </div>
   )
 }

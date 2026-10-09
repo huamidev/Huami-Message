@@ -521,3 +521,42 @@ export async function setBlocked(targetID: UUID, blocked: boolean): Promise<void
     .eq('friend_id', targetID)
   if (error) throw error
 }
+
+// ── 我自己的资料 ───────────────────────────────────────────────────────
+
+/// 改自己的资料。
+///
+/// 只能改自己的那一行（数据库的权限规则按 id 判）——
+/// 所以这里不需要传 id，`auth.uid()` 就是判据。
+export async function updateProfile(patch: {
+  display_name?: string
+  bio?: string
+  avatar_url?: string
+}): Promise<void> {
+  const { data: session } = await supabase.auth.getSession()
+  const myID = session.session?.user.id
+  if (!myID) throw new Error('还没登录')
+
+  const { error } = await supabase.from('profiles').update(patch).eq('id', myID)
+  if (error) throw error
+}
+
+/// 传一张头像，返回可以直接显示的网址。
+///
+/// 路径同样必须是 `<我的id>/...` —— 存储的权限规则按这个判，
+/// 和聊天图片那套一模一样。
+export async function uploadAvatar(myID: UUID, blob: Blob): Promise<string> {
+  const path = `${myID.toLowerCase()}/${crypto.randomUUID()}.jpg`
+  const { error } = await supabase.storage
+    .from('avatars')
+    .upload(path, blob, { contentType: 'image/jpeg', cacheControl: '3600', upsert: false })
+  if (error) throw error
+
+  // ⚠️ 加个时间戳。
+  //
+  // 头像换过之后文件名是新的，本来不会命中旧缓存 ——
+  // 但**同一个人在不同地方显示头像**时，浏览器有时会把
+  // "同一个用户的头像"当成一个缓存条目。加个参数最省事。
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+  return `${data.publicUrl}?v=${Date.now()}`
+}
