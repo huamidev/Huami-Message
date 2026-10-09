@@ -76,6 +76,55 @@ enum AppLog {
         return "+" + String(format: "%.0f", ms) + "ms"
     }
 
+    // MARK: - 同时写一份到文件
+
+    /// 日志文件的路径：App 沙盒里的 Documents/huami-log.txt
+    ///
+    /// 【为什么除了 print 还要写文件】
+    ///
+    /// 这一整天我都在和"日志到底有没有到达对方眼睛"较劲：
+    ///   · os.Logger 不进 Xcode 控制台（用户看不到）
+    ///   · print 不进系统日志（我在这边抓不到）
+    ///
+    /// 写文件把这两头都解决了：用户能看（如果他想），
+    /// 我也能直接从模拟器/设备里把文件拉出来自己量，
+    /// 不用每次都请用户截图控制台。
+    static var fileURL: URL? {
+        FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent("huami-log.txt")
+    }
+
+    private static let fileQueue = DispatchQueue(label: "huami.log.file")
+
+    /// 追加一行到日志文件。
+    ///
+    /// 上限 512KB：超过就从中间截断重写（保留后半段）。
+    /// 不设上限的话，一个跑了几个月的 App 会攒出几十兆日志 ——
+    /// 用户的存储空间不该被日志吃掉。
+    private static func appendToFile(_ line: String) {
+        guard let url = fileURL else { return }
+        fileQueue.async {
+            let stamped = ISO8601DateFormatter().string(from: Date()) + " " + line + "\n"
+            guard let data = stamped.data(using: .utf8) else { return }
+
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                let size = (try? handle.seekToEnd()) ?? 0
+                if size > 512 * 1024 {
+                    // 太大了：从当前内容的中间往后留一半
+                    try? handle.truncate(atOffset: 0)
+                    try? handle.write(contentsOf: data)
+                } else {
+                    try? handle.write(contentsOf: data)
+                }
+            } else {
+                try? data.write(to: url, options: .atomic)
+            }
+        }
+    }
+
     /// 正常信息（「加载了 12 个会话，耗时 8ms」这种）
     static func info(_ module: Module, _ message: String) {
         logger(module).info("\(message)")
@@ -90,14 +139,18 @@ enum AppLog {
         // 排查信息**必须真的到达对方眼睛**，否则等于没写。
         //
         // 两样都留：Logger 用于正经排查，print 保证"看得见"。
-        print("[\(module.rawValue)] \(sinceLaunch) \(message)")
+        let line = "[\(module.rawValue)] \(sinceLaunch) \(message)"
+        print(line)
+        appendToFile(line)
     }
 
     /// 出问题了。**只记录，不抛出去** ——
     /// 存不进数据库不该让 App 崩掉，用户还能继续用，只是这次没存下来。
     static func error(_ module: Module, _ message: String) {
         logger(module).error("\(message)")
-        print("[\(module.rawValue)] \(sinceLaunch) ⚠️ \(message)")
+        let line = "[\(module.rawValue)] \(sinceLaunch) ⚠️ \(message)"
+        print(line)
+        appendToFile(line)
     }
 }
 
