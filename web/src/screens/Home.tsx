@@ -62,7 +62,15 @@ export default function Home({ session }: { session: Session }) {
   }
 
   if (opened) {
-    return <Chat session={session} conversation={opened} onBack={() => setOpened(null)} />
+    return (
+      <Chat
+        session={session}
+        conversation={opened}
+        friends={conversations ?? []}
+        onBack={() => setOpened(null)}
+        onChanged={reload}
+      />
+    )
   }
 
   return (

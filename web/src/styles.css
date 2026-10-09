@@ -359,3 +359,20 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 
 .sheet-actions { display: flex; gap: 10px; }
 .sheet-actions .btn { flex: 1; }
+
+.owner-tag {
+  font-size: 11px; font-weight: 600; color: var(--accent);
+  background: var(--accent-soft); border-radius: 999px; padding: 2px 8px;
+}
+
+/* 整屏覆盖的页面（群资料这类"从聊天里进去"的二级页）。
+   不这么做的话，它会渲染在聊天页内部 —— 后面露着顶栏和输入栏，
+   看着像布局坏了。 */
+.overlay-page {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--bg);
+  /* 让内容自己滚，别让底下那一层跟着动 */
+  overflow: hidden;
+}

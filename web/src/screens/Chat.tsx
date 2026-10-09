@@ -4,9 +4,11 @@ import { supabase } from '../lib/supabase'
 import {
   loadMessages, sendMessage, conversationKeyOf,
   uploadChatFile, sendAttachmentMessage, compressImage,
+  recallMessage,
 } from '../lib/api'
 import { startRecording, formatSeconds } from '../lib/audio'
 import PolishSheet from '../components/PolishSheet'
+import GroupInfo from './GroupInfo'
 import type { Conversation, Message } from '../lib/types'
 import Avatar from '../components/Avatar'
 
@@ -25,11 +27,15 @@ import Avatar from '../components/Avatar'
 export default function Chat({
   session,
   conversation,
+  friends = [],
   onBack,
+  onChanged = () => {},
 }: {
   session: Session
   conversation: Conversation
+  friends?: Conversation[]
   onBack: () => void
+  onChanged?: () => void
 }) {
   const myID = session.user.id
   const isGroup = conversation.kind === 'group'
@@ -41,6 +47,9 @@ export default function Chat({
   const [uploading, setUploading] = useState(false)
   const [recording, setRecording] = useState(false)
   const [showPolish, setShowPolish] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
+  /// 长按哪条消息了（弹出撤回/删除）
+  const [actionFor, setActionFor] = useState<Message | null>(null)
   const recorderRef = useRef<ReturnType<typeof startRecording> | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -216,6 +225,25 @@ export default function Chat({
     }
   }
 
+  /// 撤回一条消息。
+  ///
+  /// 先改界面再去服务器 —— 反过来的话，用户点完要等一个来回才看到变化。
+  /// 服务器失败就**改回去**：不能让界面显示"已撤回"而对面还看得见，
+  /// 那比撤回失败更糟（用户以为抹掉了，其实没有）。
+  async function doRecall(message: Message) {
+    setActionFor(null)
+    const before = messages
+    setMessages((prev) =>
+      prev.map((m) => (m.id === message.id ? { ...m, recalled_at: new Date().toISOString() } : m)),
+    )
+    try {
+      await recallMessage(message.id)
+    } catch (err) {
+      setMessages(before)
+      setError(err instanceof Error ? err.message : '撤回失败，可能已经超过两分钟了。')
+    }
+  }
+
   /// 选了一张图 → 压缩 → 上传 → 发出去。
   ///
   /// 全程给用户看着：压缩和上传加起来可能要一两秒，
@@ -244,6 +272,33 @@ export default function Chat({
 
   return (
     <div className="chat">
+      {actionFor && (
+        <div className="sheet-backdrop" onClick={() => setActionFor(null)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="quote">{actionFor.body || (actionFor.image_url ? '[图片]' : '[语音]')}</div>
+            {canRecall(actionFor, myID) && (
+              <button className="btn danger" onClick={() => doRecall(actionFor)}>撤回</button>
+            )}
+            {!canRecall(actionFor, myID) && (
+              <p className="muted small">
+                只能撤回两分钟内、自己发的消息。
+              </p>
+            )}
+            <button className="btn ghost" onClick={() => setActionFor(null)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {showInfo && (
+        <GroupInfo
+          session={session}
+          group={conversation}
+          friends={friends}
+          onBack={() => setShowInfo(false)}
+          onChanged={() => { onChanged() }}
+        />
+      )}
+
       {showPolish && (
         <PolishSheet
           original={draft.trim()}
@@ -257,12 +312,22 @@ export default function Chat({
           ‹
         </button>
         <h2>{conversation.name}</h2>
-        <span style={{ width: 38 }} />
+        {isGroup ? (
+          <button className="icon-btn" onClick={() => setShowInfo(true)} title="群聊信息">⋯</button>
+        ) : (
+          <span style={{ width: 38 }} />
+        )}
       </header>
 
       <div className="messages" ref={listRef} onScroll={onScroll}>
         {messages.map((m) => (
-          <Bubble key={m.id} message={m} mine={m.sender_id === myID} conversation={conversation} />
+          <Bubble
+            key={m.id}
+            message={m}
+            mine={m.sender_id === myID}
+            conversation={conversation}
+            onLongPress={() => setActionFor(m)}
+          />
         ))}
       </div>
 
@@ -330,10 +395,12 @@ function Bubble({
   message,
   mine,
   conversation,
+  onLongPress,
 }: {
   message: Message
   mine: boolean
   conversation: Conversation
+  onLongPress: () => void
 }) {
   if (message.recalled_at) {
     return (
@@ -347,7 +414,13 @@ function Bubble({
   })
 
   return (
-    <div className={mine ? 'row mine' : 'row theirs'}>
+    <div
+      className={mine ? 'row mine' : 'row theirs'}
+      /* 手机上长按会触发 contextmenu，桌面上是右键 —— 两个都覆盖到。
+         用长按而不是给每条消息加一个按钮：聊天界面里每多一个按钮，
+         就少一分"在看对话"的感觉。 */
+      onContextMenu={(e) => { e.preventDefault(); onLongPress() }}
+    >
       {!mine && (
         <Avatar name={conversation.name} seed={conversation.avatarSeed} url={conversation.avatarURL} size={34} />
       )}
@@ -369,4 +442,14 @@ function Bubble({
       {!mine && <span className="stamp">{time}</span>}
     </div>
   )
+}
+
+/// 这条能不能撤回：我发的、还没撤回、且在两分钟内。
+///
+/// 判据和服务器那条规则一致（客户端判一次是为了即时反馈，
+/// 服务器还要再判一次 —— 客户端的时间可以被绕过）。
+function canRecall(message: Message, myID: string): boolean {
+  if (message.sender_id !== myID) return false
+  if (message.recalled_at) return false
+  return Date.now() - new Date(message.created_at).getTime() < 120_000
 }

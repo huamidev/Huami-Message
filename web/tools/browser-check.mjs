@@ -62,6 +62,57 @@ if (hasList > 0) {
   console.log('④ 发出去的消息出现在页面上:', sent > 0 ? '✓' : '✗')
 }
 
+// ④a 撤回刚发的那条（长按 = contextmenu）
+const lastMine = page.locator('.bubble.mine').last()
+if (await lastMine.count()) {
+  await lastMine.click({ button: 'right' })
+  await page.waitForTimeout(1000)
+  await shot('4b-长按菜单')
+  const recallBtn = page.locator('.sheet button:has-text("撤回")')
+  if (await recallBtn.count()) {
+    await recallBtn.click()
+    await page.waitForTimeout(2500)
+    await shot('4c-撤回后')
+    const recalled = await page.locator('.recalled').count()
+    console.log('④a 撤回：菜单有「撤回」✓，撤回后页面出现', recalled, '条撤回提示',
+                recalled > 0 ? '✓' : '✗（撤回没生效）')
+  } else {
+    console.log('④a 撤回：✗ 菜单里没有「撤回」按钮')
+  }
+}
+
+// ④b 群资料页（群里左上角那个 ⋯）
+// ⚠️ **先回列表再找群** —— 上面第④步之后还停在聊天页里，
+//    那时候页面上根本没有 .conv 元素，找不到群不是"没有群"，
+//    是"看错地方了"。第一次写这段就栽在这儿。
+await page.locator('.chat-topbar .icon-btn').first().click()
+await page.waitForTimeout(1200)
+
+const groupRow = page.locator('.conv').filter({ hasText: /群|、/ }).first()
+if (await groupRow.count()) {
+  await groupRow.click()
+  await page.waitForTimeout(2000)
+  const dots = page.locator('.chat-topbar .icon-btn').last()
+  if (await dots.count()) {
+    await dots.click()
+    await page.waitForTimeout(2000)
+    await shot('5b-群资料')
+    const members = await page.locator('.req .conv-name').count()
+    const ownerTag = await page.locator('.owner-tag').count()
+    const canLeave = await page.locator('text=退出群聊').count()
+    const isOwnerHint = await page.locator('text=你是群主').count()
+    console.log('④b 群资料页：成员', members, '| 群主标记', ownerTag,
+                '| 退群按钮', canLeave ? '有' : '无',
+                '| 群主提示', isOwnerHint ? '有' : '无')
+    await page.locator('.topbar .icon-btn').first().click()
+    await page.waitForTimeout(600)
+  } else {
+    console.log('④b 群资料入口 ✗ 没找到 ⋯ 按钮')
+  }
+  await page.locator('.topbar .icon-btn').first().click()
+  await page.waitForTimeout(600)
+}
+
 // ⑤ 联系人页
 await page.click('.tab:has-text("联系人")')
 await page.waitForTimeout(2000)

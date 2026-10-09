@@ -417,3 +417,42 @@ export async function compressImage(file: File): Promise<Blob> {
   if (!blob) throw new Error('图片压缩失败')
   return blob
 }
+
+// ── 群管理 ─────────────────────────────────────────────────────────────
+
+/// 改群名。**只有群主能改** —— 数据库那条 update 规则会拦下别人。
+///
+/// 别人改会得到 403（`new row violates row-level security policy`），
+/// 那是正常的，不是 bug。界面上应该**不给非群主看这个入口**，
+/// 而不是让他点了再报错。
+export async function renameGroup(id: UUID, title: string): Promise<void> {
+  const { error } = await supabase.from('conversations').update({ title }).eq('id', id)
+  if (error) throw error
+}
+
+/// 往群里拉人（按用户名）。
+export async function addGroupMembers(id: UUID, usernames: string[]): Promise<void> {
+  const { error } = await supabase.rpc('add_group_members', {
+    target_group: id,
+    member_usernames: usernames,
+  })
+  if (error) throw error
+}
+
+/// 退群。群主退不了 —— 服务器会明确拒绝并说明原因。
+export async function leaveGroup(id: UUID): Promise<void> {
+  const { error } = await supabase.rpc('leave_group', { target_group: id })
+  if (error) throw error
+}
+
+/// 撤回一条消息（两分钟内、自己发的）。
+///
+/// 撤回是**打标记**不是删数据 —— 两边都要看到"有过一条消息，被撤回了"。
+/// 删掉的话，对面手机上那条还在，而发的人坚称没发过。
+export async function recallMessage(id: UUID): Promise<void> {
+  const { error } = await supabase
+    .from('messages')
+    .update({ recalled_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
