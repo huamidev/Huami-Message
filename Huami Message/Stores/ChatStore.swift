@@ -265,7 +265,26 @@ final class ChatStore {
     private func refreshFromLocal() {
         conversations = local.loadConversations()
         for convo in conversations {
-            messagesByFriend[convo.friend.id] = local.loadMessages(with: convo.friend.id)
+            // ⚠️ **不要用空结果覆盖已有的消息。**
+            //
+            // 【为什么 —— 用户报的一个 bug】
+            //
+            // "聊天界面滑动退出到一半然后滑回来，消息就没了，重进才出现。"
+            //
+            // 这里原来是无条件覆盖：local.loadMessages 读出来是什么就写什么。
+            // 而**读出来是空**并不等于"消息被删了" —— 更常见的是
+            // 这一刻库还没就绪、或者读和写撞在了一起。
+            // 用空结果盖掉内存里那份，界面就白了；而重进会重新走一遍
+            // 同步，所以"重进才出现"。
+            //
+            // 真正要清空的时候（删会话、清聊天记录）有专门的入口，
+            // 不该靠"读了一遍恰好是空的"来表达。
+            let disk = local.loadMessages(with: convo.friend.id)
+            if disk.isEmpty, let memory = messagesByFriend[convo.friend.id], !memory.isEmpty {
+                AppLog.error(.data, "本地读出来是空的，但内存里有 \(memory.count) 条 —— 保留内存里那份（好友 \(convo.friend.id.uuidString.prefix(8))）")
+            } else {
+                messagesByFriend[convo.friend.id] = disk
+            }
         }
     }
 
