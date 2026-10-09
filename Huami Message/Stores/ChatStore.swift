@@ -229,7 +229,11 @@ final class ChatStore {
             for convo in remoteConversations {
                 local.save(friend: convo.friend)
 
-                let remoteMessages = try await remote.loadMessages(with: convo.friend.id)
+                // 群聊和一对一走的过滤方式完全不同，得把类型传下去。
+                // convo.friend.kind 是这段会话自己的类型，最可靠。
+                let remoteMessages = try await remote.loadMessages(
+                    with: convo.friend.id,
+                    isGroup: convo.friend.kind == .group)
                 // 注意用批量版本：一次落盘，而不是每条一个事务。
                 // 首次同步几百条历史时，这个差别是"能感觉到"和"感觉不到"的差别。
                 local.saveFromRemote(remoteMessages)

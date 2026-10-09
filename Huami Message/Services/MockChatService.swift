@@ -50,7 +50,7 @@ final class MockChatService: ChatService {
         return list.sorted { $0.lastTime > $1.lastTime }
     }
 
-    func loadMessages(with friendID: Friend.ID) async throws -> [Message] {
+    func loadMessages(with friendID: Friend.ID, isGroup: Bool) async throws -> [Message] {
         try await Task.sleep(for: latency)
         return messages[friendID] ?? []
     }

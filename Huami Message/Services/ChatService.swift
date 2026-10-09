@@ -30,7 +30,7 @@ protocol ChatService {
     func loadConversations() async throws -> [Conversation]
 
     /// 拉取和某个好友的历史消息
-    func loadMessages(with friendID: Friend.ID) async throws -> [Message]
+    func loadMessages(with friendID: Friend.ID, isGroup: Bool) async throws -> [Message]
 
     /// 把一条消息发出去。
     /// 参数是已经组装好的 Message，返回服务器「确认收到」后的版本

@@ -51,13 +51,20 @@ final class SupabaseChatService: ChatService {
             ],
             as: [FriendshipRow].self
         )
-        guard !links.isEmpty else { return [] }
+        // ⚠️ 这里**不能**在 links 为空时直接返回 ——
+        //    一个只有群、没加好友的用户，会话列表会整个空掉。
+        //    （我第一版就是 `guard !links.isEmpty else { return [] }`。）
 
         // ② 他们的档案。
         //    ⚠️ 用 `in.(...)` **一次查完**，而不是一个好友查一次 ——
         //    后者就是"N 个好友 N 次请求"，好友一多列表就会转圈。
+        //
+        //    好友为空时**跳过这次请求**：`in.()` 里没内容会拼出一个
+        //    语法不合法的查询，服务器直接报错。
+        var profiles: [ProfileRow] = []
+        if !links.isEmpty {
         let ids = links.map { $0.friendId.uuidString.lowercased() }.joined(separator: ",")
-        let profiles: [ProfileRow] = try await client.get(
+        profiles = try await client.get(
             "/rest/v1/profiles",
             query: [
                 URLQueryItem(name: "select", value: "*"),
@@ -65,6 +72,7 @@ final class SupabaseChatService: ChatService {
             ],
             as: [ProfileRow].self
         )
+        }
         let profileByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
 
         // ③ 最近的消息，用来填"最后一条说了什么"。
@@ -90,7 +98,7 @@ final class SupabaseChatService: ChatService {
             if lastByFriend[other] == nil { lastByFriend[other] = row }
         }
 
-        return links
+        let direct = links
             .compactMap { link -> Conversation? in
                 // 档案读不到就跳过这个人（比如对方注销了账号）
                 guard let profile = profileByID[link.friendId] else { return nil }
@@ -108,7 +116,62 @@ final class SupabaseChatService: ChatService {
                     isBlocked: link.blocked
                 )
             }
-            .sorted { $0.lastTime > $1.lastTime }
+        // ③ 我参与的群
+        let groups = try await loadGroups(myID: myID)
+
+        return (direct + groups).sorted { $0.lastTime > $1.lastTime }
+    }
+
+    /// 我参与的群聊。
+    ///
+    /// 两步查询：先问"我参与了哪些对话"，再按 id 一次把群信息查回来。
+    /// 和好友那边一样，**不能一个群查一次**。
+    private func loadGroups(myID: UUID) async throws -> [Conversation] {
+        let me = myID.uuidString.lowercased()
+
+        struct MemberRow: Decodable { let conversationId: UUID }
+        let memberships: [MemberRow] = try await client.get(
+            "/rest/v1/conversation_members",
+            query: [
+                URLQueryItem(name: "select", value: "conversation_id"),
+                URLQueryItem(name: "user_id", value: "eq.\(me)"),
+            ],
+            as: [MemberRow].self
+        )
+        guard !memberships.isEmpty else { return [] }
+
+        struct GroupRow: Decodable {
+            let id: UUID
+            let title: String?
+            let avatarSeed: Int
+        }
+        let ids = Set(memberships.map { $0.conversationId.uuidString.lowercased() })
+            .joined(separator: ",")
+        let rows: [GroupRow] = try await client.get(
+            "/rest/v1/conversations",
+            query: [
+                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "id", value: "in.(\(ids))"),
+                // 只取群。一对一将来也会进这张表（第二步的迁移做完之后），
+                // 现在先挡一道，免得两种数据混进来。
+                URLQueryItem(name: "kind", value: "eq.group"),
+            ],
+            as: [GroupRow].self
+        )
+
+        return rows.map { row in
+            Conversation(
+                friend: Friend(id: row.id,
+                               name: row.title ?? "群聊",
+                               avatarSeed: row.avatarSeed,
+                               kind: .group,
+                               title: row.title),
+                lastMessage: "",
+                lastTime: .distantPast,
+                unreadCount: 0,
+                isBlocked: false
+            )
+        }
     }
 
     // ========================================================================
@@ -228,20 +291,32 @@ final class SupabaseChatService: ChatService {
     // 某个会话的消息
     // ========================================================================
 
-    func loadMessages(with friendID: Friend.ID) async throws -> [Message] {
+    /// 拉一段对话的历史消息。
+    ///
+    /// `isGroup` 决定按哪种方式过滤 —— 两种不能混：
+    ///   一对一 → 「我发给他的」或者「他发给我的」（recipient_id 配对）
+    ///   群聊   → conversation_id 等于这个群
+    ///
+    /// ⚠️ 群消息的 recipient_id 是空的，用配对过滤**一条都查不到** ——
+    ///    不分开写的话，群聊点进去是一片空白，而且不报任何错。
+    func loadMessages(with friendID: Friend.ID, isGroup: Bool) async throws -> [Message] {
         guard let myID else { return [] }
         let me = myID.uuidString.lowercased()
         let other = friendID.uuidString.lowercased()
+
+        // 群聊：直接按会话过滤，一行搞定
+        // 一对一：PostgREST 的 or/and 可以嵌套，这是标准的"两人之间的消息"
+        let filter = isGroup
+            ? URLQueryItem(name: "conversation_id", value: "eq.\(other)")
+            : URLQueryItem(name: "or",
+                           value: "(and(sender_id.eq.\(me),recipient_id.eq.\(other)),"
+                                + "and(sender_id.eq.\(other),recipient_id.eq.\(me)))")
 
         let rows: [MessageRow] = try await client.get(
             "/rest/v1/messages",
             query: [
                 URLQueryItem(name: "select", value: "*"),
-                // 「我发给他的」或者「他发给我的」。
-                // PostgREST 的 or/and 可以嵌套，这一句就是标准的"两人之间的消息"。
-                URLQueryItem(name: "or",
-                             value: "(and(sender_id.eq.\(me),recipient_id.eq.\(other)),"
-                                  + "and(sender_id.eq.\(other),recipient_id.eq.\(me)))"),
+                filter,
                 URLQueryItem(name: "order", value: "created_at.asc"),
                 // 第一版先限 500 条。翻更早的历史要分页，以后再说 ——
                 // 现在聊天框里有个"往上翻到底"的边界，但不会把 App 卡死。
