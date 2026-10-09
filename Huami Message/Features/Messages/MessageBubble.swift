@@ -64,6 +64,13 @@ struct MessageBubble: View {
                 .padding(.bottom, 2)      // 和气泡底部对齐，看着稳
             }
 
+            // ── 时间贴在内侧 ──
+            //
+            // 我发的消息靠右，所以"内侧"是它的左边；
+            // 对方发的靠左，内侧是它的右边。
+            // 这样时间永远挨着对话中间，而不是贴着屏幕边缘。
+            if isMine { metaRow.padding(.trailing, 6) }
+
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
                 // 群聊里"别人发的"要标出是谁 —— 三个人说话时，
                 // 只知道"不是我"等于不知道。名字放在气泡正上方。
@@ -105,7 +112,6 @@ struct MessageBubble: View {
                         .opacity(message.status == .sending ? 0.72 : 1)
                 }
 
-                metaRow
             }
             // 长按气泡 → 弹出操作菜单
             .contextMenu {
@@ -120,6 +126,7 @@ struct MessageBubble: View {
                 }
             }
 
+            if !isMine { metaRow.padding(.leading, 6) }
             if !isMine { Spacer(minLength: 56) }
         }
         .transition(
@@ -156,6 +163,9 @@ struct MessageBubble: View {
             if isMine { statusView }
         }
         .padding(.horizontal, 4)
+        // 和气泡底边对齐时，往上抬一点点看着更稳
+        //（文字基线比气泡底边低一点，不抬会显得往下掉）
+        .padding(.bottom, 3)
     }
 
     /// 我发的消息才需要状态。好友发来的消息永远是"已送达"，不用显示。
