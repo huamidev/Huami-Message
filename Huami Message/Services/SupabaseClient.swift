@@ -361,6 +361,25 @@ final class SupabaseClient {
     static let jsonEncoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
+        // ⚠️ **日期必须显式指定格式。**
+        //
+        // 不写这一行的话，JSONEncoder 默认用 `.deferredToDate` ——
+        // 把 Date 编成"2001 年 1 月 1 日起的秒数"（一个裸数字）。
+        // 而数据库那边要的是带时区的时间戳字符串，于是报：
+        //
+        //     400: invalid input syntax for type timestamp with time zone:
+        //          "813215785.424415"
+        //
+        // 而**解码器那边早就有自己的策略**（见下面 jsonDecoder）——
+        // 也就是说编码和解码一直不对称，只是之前没发过日期，
+        // 所以没暴露。撤回是第一个要往服务器写时间的操作。
+        //
+        // 教训：**一对编解码器要一起看。** 只给一边定规则，
+        // 等于埋了一个"等到第一次用到才炸"的坑。
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(SupabaseDate.string(from: date))
+        }
         return encoder
     }()
 
@@ -516,6 +535,15 @@ enum SupabaseDate {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
     }()
+
+    /// 把时间转成服务器认的字符串。
+    ///
+    /// 和 parse 用同一套格式选项，保证"写进去的"和"读出来的"是一种东西。
+    /// 带毫秒（.withFractionalSeconds）—— 数据库那边的精度是微秒，
+    /// 我们给毫秒足够，而且少了毫秒在某些边界上会差一秒。
+    static func string(from date: Date) -> String {
+        withFraction.string(from: date)
+    }
 
     static func parse(_ text: String) -> Date? {
         // ⚠️ Postgres 的时间戳带**微秒**（6 位小数），

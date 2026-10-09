@@ -213,8 +213,12 @@ struct MessageBubble: View {
             if isMine { statusView }
         }
         .padding(.horizontal, 4)
-        // 往上抬一点点：文字的基线比气泡底边低，不抬会显得往下掉
-        .padding(.bottom, 3)
+        // 让它正贴在气泡底边上。
+        //
+        // 之前这里还加了 .padding(.bottom, 3)，想"抬一点看着更稳"，
+        // 结果时间是悬在气泡左下角外面一点点 —— 用户要的是
+        // "放在消息的左下部分"，那就得贴住。
+        .padding(.bottom, 1)
     }
 
     /// 我发的消息才需要状态。好友发来的消息永远是"已送达"，不用显示。
