@@ -130,6 +130,25 @@ final class SupabaseAuthService: AuthService {
 
     // MARK: - 用邮件链接里的凭证登录
 
+    /// 用给定的 refresh token 换一个新的 access token。
+    ///
+    /// 和 refreshSession() 的区别：那个读的是钥匙串里的"当前会话"，
+    /// 这个用的是调用方手里那份（比如账号列表里存的旧凭证）。
+    private func renewAccessToken(refreshToken: String) async -> String? {
+        struct Body: Encodable { let refreshToken: String }
+        struct Response: Decodable {
+            let accessToken: String
+            let refreshToken: String?
+        }
+        guard let response: Response = try? await client.post(
+            "/auth/v1/token",
+            query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
+            body: Body(refreshToken: refreshToken),
+            as: Response.self
+        ) else { return nil }
+        return response.accessToken
+    }
+
     /// 用 refresh token 换一个新的 access token。
     ///
     /// 这是**整个 App 能连续用下去的前提**：access token 一小时就过期，
@@ -209,15 +228,39 @@ final class SupabaseAuthService: AuthService {
         // 注意 userID 先留空：现在还不知道，靠下面的请求问出来。
         client.setSession(accessToken: accessToken, userID: nil)
 
+        // ⚠️ **access token 可能早就过期了。**
+        //
+        // 账号列表里存的那份凭证，可能是几天前登录时留下的。
+        // 直接用它会拿到 403，然后这里的旧代码就返回 nil ——
+        // 表现是"点账号列表切不回去，还说登录状态过期了，让重新输密码"。
+        //
+        // 而**我们手里明明有 refresh token**，能换一张新的。
+        // （用户实测报的就是这个。）
+        var usableToken = accessToken
+        if (try? await client.get("/auth/v1/user", as: AuthUser.self)) == nil {
+            if let refreshToken, !refreshToken.isEmpty,
+               let renewed = await renewAccessToken(refreshToken: refreshToken) {
+                usableToken = renewed
+                // 顺便把钥匙串里的那份也换成新的，下次启动就不用再换一遍
+                saveSession(StoredSession(accessToken: renewed,
+                                          refreshToken: refreshToken,
+                                          account: currentAccount() ?? Account(id: UUID(),
+                                                                               email: "",
+                                                                               displayName: "",
+                                                                               avatarSeed: 0)))
+            }
+        }
+        client.setSession(accessToken: usableToken, userID: nil)
+
         guard let user = try? await client.get("/auth/v1/user", as: AuthUser.self) else {
-            // 凭证无效或过期：清干净，让用户手动登录一次
+            // 换过新的还是不行：清干净，让用户手动登录一次
             client.setSession(accessToken: nil, userID: nil)
             return nil
         }
 
-        client.setSession(accessToken: accessToken, userID: user.id)
+        client.setSession(accessToken: usableToken, userID: user.id)
         return try? await finishSignIn(user: user,
-                                       accessToken: accessToken,
+                                       accessToken: usableToken,
                                        refreshToken: refreshToken)
     }
 
