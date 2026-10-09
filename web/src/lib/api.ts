@@ -491,3 +491,33 @@ export async function loadMyProfile(myID: UUID): Promise<Profile | null> {
   if (error) throw error
   return (data as Profile) ?? null
 }
+
+// ── 好友的"重"操作 ─────────────────────────────────────────────────────
+
+/// 删除好友（**双向**）。
+///
+/// 必须走数据库函数，不能直接 DELETE：客户端直连只能删到"我→他"那一行，
+/// 而好友关系是两行（我→他、他→我）。只删一行的话，
+/// 对方那边还看得到我、还能给我发消息 —— 而服务器认为我们不是好友，
+/// 消息会被拒。**一个删不干净的好友，比没删更让人困惑。**
+export async function removeFriend(targetID: UUID): Promise<void> {
+  const { error } = await supabase.rpc('remove_friend', { target: targetID })
+  if (error) throw error
+}
+
+/// 拉黑 / 取消拉黑。
+///
+/// 改的是"我→他"那一行上的 blocked 标记。对方发消息时服务器会据此拒收 ——
+/// **只把列表里那一行藏起来是不够的**，换个客户端照样能发进来。
+export async function setBlocked(targetID: UUID, blocked: boolean): Promise<void> {
+  const { data: session } = await supabase.auth.getSession()
+  const myID = session.session?.user.id
+  if (!myID) throw new Error('还没登录')
+
+  const { error } = await supabase
+    .from('friendships')
+    .update({ blocked })
+    .eq('user_id', myID)
+    .eq('friend_id', targetID)
+  if (error) throw error
+}

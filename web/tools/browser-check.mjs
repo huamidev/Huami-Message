@@ -124,6 +124,17 @@ if (await lastMine.count()) {
 // 放到群资料之后的话，那一步结束时已经退回列表了，
 // 页面上根本没有 .chat-topbar —— 找不到不是「没有这个功能」，
 // 是「看错地方了」。这个错今天犯了两次。
+// ④a2 ⋯ 菜单里该有的东西（一对一：小助手 / 拉黑 / 删除好友）
+await page.locator('.chat-topbar .icon-btn').last().click()
+await page.waitForTimeout(900)
+const menuItems = await page.locator('.sheet button').allInnerTexts()
+const wanted = ['小助手', '拉黑', '删除好友']
+const missing = wanted.filter((w) => !menuItems.some((t) => t.includes(w)))
+console.log('④a2 ⋯ 菜单:', menuItems.map((t) => t.trim()).join(' / '),
+            missing.length ? `✗ 缺 ${missing.join('、')}` : '✓ 该有的都有')
+await page.locator('.sheet button:has-text("取消")').click()
+await page.waitForTimeout(600)
+
 // ④c 小助手（只读，不发消息 —— 但会消耗一次 AI 调用）
 await page.locator('.chat-topbar .icon-btn').last().click()
 await page.waitForTimeout(900)

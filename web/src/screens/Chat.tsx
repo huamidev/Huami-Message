@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import {
   loadMessages, sendMessage, conversationKeyOf,
   uploadChatFile, sendAttachmentMessage, compressImage,
-  recallMessage,
+  recallMessage, removeFriend, setBlocked,
 } from '../lib/api'
 import { startRecording, formatSeconds } from '../lib/audio'
 import { markRead } from '../lib/readState'
@@ -55,6 +55,8 @@ export default function Chat({
   /// 右上角的 ⋯ 菜单开着吗
   const [showMenu, setShowMenu] = useState(false)
   const [showAssistant, setShowAssistant] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [blocked, setBlockedState] = useState(false)
   const recorderRef = useRef<ReturnType<typeof startRecording> | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -314,7 +316,49 @@ export default function Chat({
                 👥 群聊信息
               </button>
             )}
+            {!isGroup && (
+              <>
+                <button className="btn ghost" onClick={async () => {
+                  setShowMenu(false)
+                  try {
+                    await setBlocked(conversation.id, !blocked)
+                    setBlockedState(!blocked)
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : '操作失败')
+                  }
+                }}>
+                  {blocked ? '✅ 取消拉黑' : '🚫 拉黑'}
+                </button>
+                <button className="btn ghost" style={{ color: 'var(--danger)' }}
+                        onClick={() => { setShowMenu(false); setConfirmRemove(true) }}>
+                  🗑 删除好友
+                </button>
+              </>
+            )}
             <button className="btn ghost" onClick={() => setShowMenu(false)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {confirmRemove && (
+        <div className="sheet-backdrop" onClick={() => setConfirmRemove(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>删除好友</h3>
+            <p className="muted small">
+              会同时把 {conversation.name} 从你们双方的列表里去掉，
+              之前的聊天记录不会再显示。要重新加回来得对方同意。
+            </p>
+            <button className="btn danger" onClick={async () => {
+              setConfirmRemove(false)
+              try {
+                await removeFriend(conversation.id)
+                onChanged()
+                onBack()
+              } catch (e) {
+                setError(e instanceof Error ? e.message : '删除失败')
+              }
+            }}>确认删除</button>
+            <button className="btn ghost" onClick={() => setConfirmRemove(false)}>取消</button>
           </div>
         </div>
       )}
