@@ -596,6 +596,31 @@ final class SupabaseAuthService: AuthService {
         if !isSessionPersisted {
             AppLog.error(.network, "登录凭证没能存进钥匙串，这台设备上下次打开需要重新登录")
         }
+
+        // ── 账号列表里那份**必须跟着更新** ──
+        //
+        // 【为什么必须在这里做 —— 一个真实的 bug】
+        //
+        // Supabase 每次刷新都会**轮换**凭证：换出新的 access token 之后，
+        // 旧的立刻失效（服务端会回 "Session from session_id claim in JWT
+        // does not exist"），旧的 refresh token 也会失效。
+        //
+        // 而自动刷新的那段代码只调了 saveSession（更新钥匙串），
+        // **账号列表里存的那份从来没跟着变**。
+        //
+        // 于是：用户在账号列表里点自己刚登录过的账号，
+        // 用的却是几小时前那份早就作废的凭证 —— 报"登录状态过期"。
+        // 用户实测的原话是"我退出马上登录也显示这个"，
+        // 因为问题跟时间无关，是那份副本一直是旧的。
+        //
+        // 放在 saveSession 里而不是各个调用点：**所有凭证变化都会经过这里**，
+        // 一处就够，而且以后加新的登录方式也不会漏。
+        let account = session.account
+        let access = session.accessToken
+        let refresh = session.refreshToken
+        Task { @MainActor in
+            AccountVault.shared.remember(account, accessToken: access, refreshToken: refresh)
+        }
     }
 }
 
