@@ -2,24 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!--
-	  录音权限说明。
-	  ⚠️ 这一条**必须写**，而且必须是给用户看的人话 ——
-	  不写的话，一按录音按钮 App 会**直接崩掉**（不是弹窗，是崩）。
-	  App Store 审核也会检查这句话说没说清楚拿去干什么。
-	-->
-	<key>NSMicrophoneUsageDescription</key>
-	<string>发语音消息时需要录音。只在你按住录音键的时候录，松开就停。</string>
-	<!--
-	  后台刷新。
-	  没有推送，只能靠系统偶尔给一次机会，让我们在后台收一次消息。
-	  ⚠️ 系统按使用习惯决定给不给，可能几小时才一次 —— 所以它只是
-	  "顺便多收一点"，不是提醒手段。真正的提醒靠图标红点和本机通知。
-	-->
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -32,6 +14,10 @@
 				<string>huami</string>
 			</array>
 		</dict>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
 	</array>
 </dict>
 </plist>

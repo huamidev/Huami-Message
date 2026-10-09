@@ -26,3 +26,8 @@ Secrets.plist
 
 # Supabase CLI 的临时文件（link 状态之类，不该提交）
 supabase/.temp/
+
+# 网页版
+web/node_modules/
+web/dist/
+web/.env.local
