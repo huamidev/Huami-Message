@@ -305,3 +305,51 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 .voice audio { height: 34px; max-width: 200px; }
 .bubble.mine .voice .stamp { color: rgba(255, 255, 255, 0.8); }
 .btn.danger { background: var(--danger); color: #fff; }
+
+/* ── 润色面板 ── */
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 20;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet {
+  width: 100%; max-width: 520px;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  display: grid; gap: 12px;
+  max-height: 88vh; overflow-y: auto;
+}
+.sheet h3 { margin: 0; font-size: 17px; }
+
+.quote {
+  font-size: 14px; color: var(--text-2);
+  background: var(--bg); border-radius: 10px; padding: 10px 12px;
+  max-height: 90px; overflow-y: auto; white-space: pre-wrap;
+}
+
+.styles { display: grid; gap: 8px; }
+.style {
+  display: grid; gap: 1px; text-align: left;
+  border: 1.5px solid var(--separator); background: transparent;
+  border-radius: 12px; padding: 10px 12px; font: inherit; cursor: pointer;
+}
+.style.on { border-color: var(--accent); background: var(--accent-soft); }
+.style:disabled { opacity: 0.6; }
+.style-title { font-weight: 600; font-size: 15px; }
+.style-hint { font-size: 12px; color: var(--text-2); }
+
+.result {
+  font-size: 15px; line-height: 1.5; white-space: pre-wrap;
+  background: var(--bg); border-radius: 10px; padding: 12px;
+  min-height: 56px;
+}
+.caret {
+  display: inline-block; width: 2px; height: 15px; margin-left: 2px;
+  background: var(--accent); vertical-align: text-bottom;
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.sheet-actions { display: flex; gap: 10px; }
+.sheet-actions .btn { flex: 1; }

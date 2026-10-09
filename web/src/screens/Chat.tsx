@@ -6,6 +6,7 @@ import {
   uploadChatFile, sendAttachmentMessage, compressImage,
 } from '../lib/api'
 import { startRecording, formatSeconds } from '../lib/audio'
+import PolishSheet from '../components/PolishSheet'
 import type { Conversation, Message } from '../lib/types'
 import Avatar from '../components/Avatar'
 
@@ -39,10 +40,13 @@ export default function Chat({
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [showPolish, setShowPolish] = useState(false)
   const recorderRef = useRef<ReturnType<typeof startRecording> | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  /// 有没有草稿 —— 有才显示润色按钮（空的时候点它没有意义）
+  const hasDraft = draft.trim().length > 0
   /// 用户是不是"贴着底部"。不贴的时候来新消息就不自动滚。
   const stickToBottom = useRef(true)
 
@@ -240,6 +244,14 @@ export default function Chat({
 
   return (
     <div className="chat">
+      {showPolish && (
+        <PolishSheet
+          original={draft.trim()}
+          onUse={(text) => { setDraft(text); setShowPolish(false) }}
+          onClose={() => setShowPolish(false)}
+        />
+      )}
+
       <header className="topbar chat-topbar">
         <button className="icon-btn" onClick={onBack} title="返回">
           ‹
@@ -280,7 +292,17 @@ export default function Chat({
           placeholder="说点什么…"
           autoComplete="off"
         />
-        {draft.trim() ? (
+        {hasDraft && (
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setShowPolish(true)}
+            title="帮我润色"
+          >
+            ✨
+          </button>
+        )}
+        {hasDraft ? (
           <button className="btn primary" type="submit">发送</button>
         ) : (
           <button
