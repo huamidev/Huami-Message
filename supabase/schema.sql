@@ -208,7 +208,16 @@ drop policy if exists "messages read own" on public.messages;
 create policy "messages read own"
     on public.messages for select
     to authenticated
-    using (auth.uid() = sender_id or auth.uid() = recipient_id);
+    using (
+        auth.uid() = sender_id
+        or auth.uid() = recipient_id
+        -- 群消息的 recipient_id 是空的，靠这一条才读得到别人发的。
+        -- 详见 supabase/groups-step3.sql
+        or (
+            conversation_id is not null
+            and public.is_conversation_member(conversation_id)
+        )
+    );
 
 drop policy if exists "messages send own" on public.messages;
 create policy "messages send own"

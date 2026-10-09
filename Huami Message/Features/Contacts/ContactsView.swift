@@ -21,7 +21,16 @@ struct ContactsView: View {
 
     /// 按名字排 —— 找人时人是按字母/拼音顺序回忆的，不是按聊天时间
     private var sorted: [Conversation] {
-        store.conversations.sorted { $0.friend.displayName < $1.friend.displayName }
+        // ⚠️ **通讯录只列一对一。**
+        //
+        // 群聊在本地模型里也是一段"会话"（共用 StoredFriend 那一行），
+        // 所以不加这个过滤，群会跑到通讯录里冒充好友 ——
+        // 用户的原话是"群聊变成了通讯录的好友"。
+        //
+        // 群不是联系人。它属于消息列表，不属于通讯录。
+        store.conversations
+            .filter { $0.friend.kind == .direct }
+            .sorted { $0.friend.displayName < $1.friend.displayName }
     }
 
     var body: some View {
