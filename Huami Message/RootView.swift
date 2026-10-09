@@ -251,6 +251,7 @@ struct RootView: View {
         // 加上 id 之后，登录状态一变这个任务就会重跑。
         // 切回前台 → 轻量刷新一次好友资料（昵称、头像色）
         .onChange(of: scenePhase) { _, phase in
+            AppLog.info(.data, "scenePhase 变成 \(phase)：isSignedIn=\(auth.isSignedIn)")
             guard phase == .active, auth.isSignedIn else { return }
             Task {
                 await store.refreshFriends()
@@ -258,6 +259,7 @@ struct RootView: View {
             }
         }
         .task(id: auth.isSignedIn) {
+            AppLog.info(.data, "同步任务开始：isSignedIn=\(auth.isSignedIn)")
             // 开发用开关
             if DevFlags.resetTerms { hasAcceptedTerms = false }
             if DevFlags.acceptTerms { hasAcceptedTerms = true }

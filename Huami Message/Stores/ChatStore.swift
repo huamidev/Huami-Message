@@ -164,7 +164,11 @@ final class ChatStore {
     /// 所以拆出这个：只查一次好友列表（里面已经带着各自的昵称和头像色），
     /// 两个请求搞定，随时调都不心疼。
     func refreshFriends() async {
-        guard !DevFlags.offline else { return }
+        AppLog.info(.data, "refreshFriends 开始调用")
+        guard !DevFlags.offline else {
+            AppLog.error(.data, "refreshFriends 被 offline 开关挡住了")
+            return
+        }
         do {
             let remoteConversations = try await remote.loadConversations()
 
