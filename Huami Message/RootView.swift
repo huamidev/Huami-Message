@@ -299,8 +299,22 @@ struct RootView: View {
             if let spec = DevFlags.createGroup {
                 let parts = spec.split(separator: ",").map { String($0) }
                 if parts.count >= 2 {
-                    try? await store.createGroup(title: parts[0],
-                                                 usernames: Array(parts.dropFirst()))
+                    // ⚠️ **不能写 try?** —— 那会把失败完全吞掉，
+                    //    界面上只会看到"没有效果"，而服务器其实回了原因。
+                    //    （这次就是这个：用户名写成了昵称 huami888，
+                    //      服务器回了"找不到用户名：huami888"，
+                    //      而 try? 让它一个字都没露出来。）
+                    do {
+                        _ = try await store.createGroup(title: parts[0],
+                                                        usernames: Array(parts.dropFirst()))
+                        AppLog.info(.data, "建群成功：\(parts[0])")
+                    } catch {
+                        let reason = (error as? LocalizedError)?.errorDescription
+                            ?? String(describing: error)
+                        AppLog.error(.data, "建群失败：\(reason)")
+                    }
+                } else {
+                    AppLog.error(.data, "建群参数格式不对，应该是 群名,用户名1,用户名2")
                 }
             }
 
