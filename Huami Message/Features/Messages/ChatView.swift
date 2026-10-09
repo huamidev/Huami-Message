@@ -36,27 +36,13 @@ struct ChatView: View {
 
     @State private var showReportSheet = false
     @State private var showGroupInfo = false
-
-    /// 列表是否已经**定位完成**。
-    ///
-    /// 【为什么需要它 —— 用户报的"进去会抖动一下"】
-    ///
-    /// 进聊天页时消息列表要挪两次位置：
-    ///   ① 消息从 0 条变成 N 条，触发一次滚动
-    ///   ② 280 毫秒后再补一次（LazyVStack 只实现了一部分内容，
-    ///      按当时的高度算锚点会偏，所以必须补）
-    ///
-    /// 这两次都会让用户看到"唰"地动一下。
-    /// 而第②次是**必需的**（不补的话长对话最后两条看不见）。
-    ///
-    /// 所以正确的做法不是去掉某一次，而是**在定位完成之前先别让它露面** ——
-    /// 顶栏、输入栏、背景照常出现，只有消息列表等 280 毫秒后
-    /// 一次性出现在正确的位置上。用户看不到过程，只看到结果。
-    @State private var isSettled = false
+    // ⚠️ 这一行是我上一步删代码时误删的 —— 补回来。
+    //    （我用"从 A 到 B 之间的内容全删"这种写法，结果把中间的
+    //     其它声明一起切掉了。构建报的 "cannot find in scope" 就是它。）
+    @State private var showClearConfirm = false
 
     /// 消息列表是不是已经做过"第一次定位"（那一次不能带动画）
     @State private var didPositionOnce = false
-    @State private var showClearConfirm = false
 
     /// 每条消息对应的判断结果。key 是那条消息的 id。
     ///
@@ -253,7 +239,6 @@ struct ChatView: View {
             // 所以是 ZStack（叠着），不是 VStack（切开）。
             ZStack(alignment: .bottom) {
                 messageList(proxy: proxy)
-                    .opacity(isSettled ? 1 : 0)
 
                 VStack(spacing: 0) {
                     // ── 底部渐隐**去掉了** ──
@@ -526,12 +511,21 @@ struct ChatView: View {
             //    表现是"打开一个长对话，最后两条看不见"（我在长列表自检里发现的）。
             //    所以这里等布局稳定后再补一次，而且**不加动画**，
             //    否则用户会看到打开瞬间画面"唰"地跳一下。
-            try? await Task.sleep(for: .milliseconds(280))
-            proxy.scrollTo(bottomAnchor, anchor: .bottom)
-            // 定位好了再露出来（不加动画：让用户看到的第一个画面
-            // 就已经是最终位置，而不是"从偏移位置滑过去"）
-            didPositionOnce = true
-            isSettled = true
+            // ⚠️ **这里原来有一次"280 毫秒后再滚一次"的补位，我把它删了。**
+            //
+            // 它存在的原因：LazyVStack 一开始只实现一部分内容，
+            // 按当时的高度算锚点会偏，于是补一次。
+            //
+            // 但它带来了两个新问题，而且都是用户直接看到的：
+            //   · 进页面先停在偏的位置，280 毫秒后**再动一下** —— 就是"抖动"
+            //   · 我为了盖住这次抖动，又加了一层"定位完成前先隐藏列表"，
+            //     结果变成**闪一下再抖**（用户的原话）
+            //
+            // 补丁摞补丁的典型。真正该用的是系统为此准备的机制：
+            // **.defaultScrollAnchor(.bottom)** —— 它会在内容陆续实现的过程中
+            // 持续把内容锚在底部，不需要我们手动补位。
+            //
+            // 删掉之后进页面只有一次定位，而且是系统负责的、不会中途改主意的那种。
 
             if DevFlags.openPolish, draft.isEmpty {
                 // ⚠️ 必须等一下再打开。
