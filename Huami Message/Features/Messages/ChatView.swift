@@ -183,7 +183,23 @@ struct ChatView: View {
     /// 这也是通用的一条：**布局的高度不要依赖异步数据到没到。**
     /// 要变就先把位置占住。
     private func senderInfo(for message: Message) -> GroupMember? {
-        guard conversation.friend.kind == .group else { return nil }
+        // ── 一对一：对方的消息，头像就是对方本人 ──
+        //
+        // 用户定的规则：**左边永远有头像，右边永远是自己、永远不放头像。**
+        // 所以一对一这里也必须返回一个（原来返回 nil，一对一左边就没头像）。
+        //
+        // 好处不只是"符合要求"：一对一的头像**不依赖任何异步数据**
+        //（对方的信息在会话列表里本来就有），所以它从第一帧就存在 ——
+        // 不会再出现"数据到了行高才变、列表跟着跳"那类问题。
+        if conversation.friend.kind == .direct {
+            return GroupMember(
+                id: conversation.friend.id,
+                name: conversation.friend.displayName,
+                avatarSeed: conversation.friend.avatarSeed,
+                avatarURL: conversation.friend.avatarURL
+            )
+        }
+
         guard let id = message.senderID else { return nil }
         if let known = memberByID[id] { return known }
         // 还没拉到资料：用 id 造一个占位（头像会是一个稳定的配色圆块，
