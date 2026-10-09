@@ -190,3 +190,90 @@ export async function sendMessage(params: {
   if (error) throw error
   return data as Message
 }
+
+// ── 加好友 ─────────────────────────────────────────────────────────────
+
+/// 用户名的规则，和 iOS 版一致：去掉开头的 @、转小写、去掉空白。
+///
+/// 为什么要统一在这一步做：用户会输入 "@Test002"、空格、"TEST002"，
+/// 这些在他眼里都是同一个名字。不归一化的话，服务器会说"找不到"，
+/// 而用户看着自己输的名字觉得明明是对的。
+export function normalizeUsername(raw: string): string {
+  return raw.trim().replace(/^@+/, '').toLowerCase().replace(/\s+/g, '').slice(0, 15)
+}
+
+export function usernameProblem(value: string): string | null {
+  if (value.length === 0) return null
+  if (value.length < 5) return '至少要 5 位'
+  if (value.length > 15) return '最多 15 位'
+  if (!/^[a-z0-9_]+$/.test(value)) return '只能用字母、数字和下划线'
+  return null
+}
+
+/// 按用户名找人。
+///
+/// 找不到时**返回 null 而不是抛错** —— "这个人不存在"是一种正常结果，
+/// 不是异常。调用方要的是"查到了就显示卡片，没查到就提示一句"。
+export async function findProfile(username: string): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('username', username)
+    .limit(1)
+  if (error) throw error
+  return (data?.[0] as Profile) ?? null
+}
+
+/// 发好友申请。
+export async function sendFriendRequest(username: string, note: string | null): Promise<void> {
+  const { error } = await supabase.rpc('send_friend_request', {
+    target_username: username,
+    note,
+  })
+  if (error) throw error
+}
+
+/// 我收到的、还没处理的申请。
+export async function loadIncomingRequests(myID: UUID): Promise<
+  { id: UUID; fromID: UUID; fromName: string; fromUsername: string; note: string | null }[]
+> {
+  const { data: rows, error } = await supabase
+    .from('friend_requests')
+    .select('*')
+    .eq('to_id', myID)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  if (!rows?.length) return []
+
+  // 申请人的资料：**一次查完**，不要一个申请查一次 ——
+  // 那又是"N 条申请 N 次请求"。
+  const ids = rows.map((r) => r.from_id as UUID)
+  const { data: profiles, error: profileError } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('id', ids)
+  if (profileError) throw profileError
+
+  const byID = new Map((profiles ?? []).map((p) => [p.id as UUID, p as Profile]))
+  return rows.flatMap((r) => {
+    const p = byID.get(r.from_id as UUID)
+    if (!p) return []   // 查不到资料就跳过这一条，不要整批失败
+    return [{
+      id: r.id as UUID,
+      fromID: r.from_id as UUID,
+      fromName: p.display_name || p.username || '某人',
+      fromUsername: p.username ?? '',
+      note: (r.note as string) ?? null,
+    }]
+  })
+}
+
+/// 同意 / 拒绝一条申请。
+export async function respondToRequest(id: UUID, accept: boolean): Promise<void> {
+  const { error } = await supabase.rpc('respond_friend_request', {
+    request_id: id,
+    accept,
+  })
+  if (error) throw error
+}

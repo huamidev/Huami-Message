@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import Login from './screens/Login'
-import Home from './screens/Home'
+import Main from './screens/Main'
 
 /// 整个网页的入口。
 ///
@@ -42,5 +42,5 @@ export default function App() {
     return <Login />
   }
 
-  return <Home session={session} />
+  return <Main session={session} />
 }
