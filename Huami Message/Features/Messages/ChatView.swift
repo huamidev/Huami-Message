@@ -152,15 +152,41 @@ struct ChatView: View {
     /// 把带闭包的那几个参数挪进一个独立函数，编译器就有了明确的类型边界。
     @ViewBuilder
     private func bubble(for message: Message) -> some View {
-        MessageBubble(
+        // 撤回过的消息**不画气泡**，换成居中的一行灰字。
+        //
+        // 放在这里而不是放进 MessageBubble 里面：气泡那个视图已经够复杂了
+        //（两层对齐、头像、时间、四种内容），再塞一个"整条换形状"的分支，
+        // 很容易又把哪一层挂错。在这一层分流最清楚。
+        if message.isRecalled {
+            return AnyView(recalledLine(for: message))
+        }
+
+        return AnyView(MessageBubble(
             message: message,
             sender: senderInfo(for: message),
             onRetry: { Task { await store.retry(message) } },
             onDelete: {
                 Haptics.warning()
                 withAnimation(.snappy) { store.deleteMessage(message) }
+            },
+            onRecall: {
+                Haptics.tap()
+                withAnimation(.snappy) { Task { await store.recall(message) } }
             }
-        )
+        ))
+    }
+
+    /// 撤回之后显示的那行字。
+    ///
+    /// 为什么不显示原来的内容：撤回了就是撤回了 —— 留着原文等于没撤回，
+    /// 而两个人看到的还不一样（发的人记得，收的人被抹掉了）。
+    /// 两边都只能看到"有过一条消息，被撤回了"，这才是公平的。
+    private func recalledLine(for message: Message) -> some View {
+        Text(message.sender == .me ? "你撤回了一条消息" : "对方撤回了一条消息")
+            .font(.system(size: 12))
+            .foregroundStyle(Theme.textTertiary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 2)
     }
 
     /// 这条消息是谁发的。一对一返回 nil（那种情况不需要头像）。

@@ -142,6 +142,9 @@ final class StoredMessage {
     /// 发送者的用户 ID（存字符串，理由同 ownerIDString ——
     /// SwiftData 的 #Predicate 对可选 UUID 比较有坑，字符串永远可靠）。
     /// 群聊里用它去查"这条是谁发的"。
+    /// 撤回时间。可选，所以老数据不用迁移。
+    var recalledAt: Date?
+
     var senderIDString: String?
 
     /// 是不是我发的。
@@ -207,6 +210,7 @@ final class StoredMessage {
         self.audioURLString = message.audioURL?.absoluteString
         self.audioSeconds = message.audioSeconds
         self.senderIDString = message.senderID?.uuidString
+        self.recalledAt = message.recalledAt
         // ⚠️ **这一行原来漏了，是"群消息全跑到右边"的原因。**
         //
         // isMine 决定气泡在左还是在右。它只在插入时设过一次，
@@ -244,6 +248,7 @@ final class StoredMessage {
             audioURL: audioURLString.flatMap(URL.init(string:)),
             audioSeconds: audioSeconds,
             senderID: senderIDString.flatMap(UUID.init(uuidString:)),
+            recalledAt: recalledAt,
             sender: isMine ? .me : .friend,
             sentAt: sentAt,
             polishedWith: polishedStyle.flatMap(PolishStyle.init(rawValue:)),

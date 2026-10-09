@@ -415,6 +415,20 @@ final class SupabaseChatService: ChatService {
         return id
     }
 
+    /// 撤回一条消息。
+    ///
+    /// 打标记，不是删数据 —— 见 Message.recalledAt 的说明。
+    /// 两分钟时限服务器也会判一次（客户端的时间可以被绕过）。
+    func recallMessage(id: UUID) async throws {
+        struct Body: Encodable { let recalledAt: Date }
+        try await client.patch(
+            "/rest/v1/messages",
+            query: [URLQueryItem(name: "id", value: "eq.\(id.uuidString.lowercased())")],
+            body: Body(recalledAt: Date()),
+            as: EmptyResponse.self
+        )
+    }
+
     /// 改群名。只有群主有权 —— 数据库那条 update 规则会拦下别人。
     func renameGroup(id: UUID, title: String) async throws {
         struct Body: Encodable { let title: String }
@@ -668,6 +682,8 @@ struct MessageRow: Decodable {
     let audioUrl: String?
     let audioSeconds: Double?
     let polishedWith: String?
+    /// 撤回时间。老数据没有这一列时是 nil，所以必须是可选。
+    let recalledAt: Date?
     let createdAt: Date
 
     /// 这条消息属于哪段对话 —— 也就是本地模型里的 friendID。
@@ -692,6 +708,7 @@ struct MessageRow: Decodable {
             audioURL: audioUrl.flatMap(URL.init(string:)),
             audioSeconds: audioSeconds,
             senderID: senderId,
+            recalledAt: recalledAt,
             sender: mine ? .me : .friend,
             sentAt: createdAt,
             polishedWith: polishedWith.flatMap(PolishStyle.init(rawValue:)),

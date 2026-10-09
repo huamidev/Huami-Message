@@ -584,6 +584,37 @@ final class ChatStore {
         refreshBadge()
     }
 
+    /// 撤回一条消息。
+    ///
+    /// 先改本地（界面立刻变），再去服务器 —— 顺序反过来的话，
+    /// 用户点完要等一个来回才看到变化。
+    ///
+    /// 服务器失败时要**退回去**：不能让界面显示"已撤回"而对面还看得见，
+    /// 那比撤回失败更糟（用户以为抹掉了，其实没有）。
+    func recall(_ message: Message) async {
+        guard message.canRecall else { return }
+
+        var recalled = message
+        recalled.recalledAt = Date()
+        replace(message.id, in: message.friendID, with: recalled)
+        persist(recalled)
+
+        do {
+            try await remote.recallMessage(id: message.id)
+            Haptics.success()
+        } catch {
+            AppLog.error(.network, "撤回失败：\(describeSendError(error))")
+            // 退回去：那条消息重新出现，还是原样。
+            //
+            // **这就是给用户的反馈** —— 他点撤回、消息没消失，
+            // 比弹一句「撤回失败」更直接（而且不用在聊天页再加一个弹窗）。
+            // 再加一次警告震动，让「没成功」这件事有触感。
+            replace(message.id, in: message.friendID, with: message)
+            persist(message)
+            Haptics.warning()
+        }
+    }
+
     /// 删除单条消息
     func deleteMessage(_ message: Message) {
         local.deleteMessage(id: message.id)

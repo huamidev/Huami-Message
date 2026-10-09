@@ -234,6 +234,26 @@ struct Message: Identifiable, Hashable {
     ///
     /// 老数据没有这个字段（可选），那种情况下一对一的界面照常工作，
     /// 群聊里会退化成"不显示名字"—— 而不是显示错误的名字。
+    /// 什么时候撤回的。为空 = 没撤回。
+    ///
+    /// 【为什么是"标记"而不是"删掉"】
+    ///
+    /// 删掉的话，对面手机上那条还在 —— 他会看到一个自己记得、
+    /// 你却坚称没发过的东西。撤回要的效果是**两边都变成一条提示**：
+    /// 「你撤回了一条消息」/「对方撤回了一条消息」。
+    var recalledAt: Date?
+
+    /// 撤回的两分钟时限。与微信一致，也和服务器那条规则一致。
+    static let recallWindow: TimeInterval = 120
+
+    /// 这条还能不能撤回：是我发的、还没撤回、且在两分钟内。
+    var canRecall: Bool {
+        guard sender == .me, recalledAt == nil else { return false }
+        return Date().timeIntervalSince(sentAt) < Self.recallWindow
+    }
+
+    var isRecalled: Bool { recalledAt != nil }
+
     var senderID: UUID? = nil
 
     /// 语音消息的音频地址。纯文字/图片消息是 nil。
@@ -266,6 +286,7 @@ struct Message: Identifiable, Hashable {
         audioURL: URL? = nil,
         audioSeconds: Double? = nil,
         senderID: UUID? = nil,
+        recalledAt: Date? = nil,
         sender: Sender,
         sentAt: Date = .now,
         polishedWith: PolishStyle? = nil,
@@ -278,6 +299,7 @@ struct Message: Identifiable, Hashable {
         self.audioURL = audioURL
         self.audioSeconds = audioSeconds
         self.senderID = senderID
+        self.recalledAt = recalledAt
         self.sender = sender
         self.sentAt = sentAt
         self.polishedWith = polishedWith

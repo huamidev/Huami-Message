@@ -36,6 +36,9 @@ protocol ChatService {
     /// 服务器那边一次做完：建对话 + 把我设成群主 + 把这些人拉进来。
     func createGroup(title: String, usernames: [String]) async throws -> UUID
 
+    /// 撤回一条消息（两分钟内、自己发的）。
+    func recallMessage(id: UUID) async throws
+
     /// 改群名。只有群主能改（服务端的规则说了算）。
     func renameGroup(id: UUID, title: String) async throws
 
@@ -141,6 +144,7 @@ extension ChatService {
     ///
     /// 代价是"忘了实现"不会编译报错。所以这两个方法只在
     /// 群资料页里调用 —— 那一页在 Mock 数据下本来就进不去。
+    func recallMessage(id: UUID) async throws {}
     func renameGroup(id: UUID, title: String) async throws {}
     func addGroupMembers(id: UUID, usernames: [String]) async throws {}
     func leaveGroup(id: UUID) async throws {}

@@ -38,6 +38,7 @@ struct MessageBubble: View {
 
     /// 长按菜单里点"删除"会调它
     var onDelete: () -> Void = {}
+    var onRecall: () -> Void = {}
 
     private var isMine: Bool { message.sender == .me }
 
@@ -153,10 +154,22 @@ struct MessageBubble: View {
             }
             // 长按气泡 → 弹出操作菜单
             .contextMenu {
-                Button {
-                    UIPasteboard.general.string = message.text
-                } label: {
-                    Label("复制", systemImage: "doc.on.doc")
+                // 两分钟内、自己发的才能撤回。
+                // 菜单里**不出现**做不到的事 —— 灰着的按钮比没有按钮更让人困惑。
+                if message.canRecall {
+                    Button {
+                        onRecall()
+                    } label: {
+                        Label("撤回", systemImage: "arrow.uturn.backward")
+                    }
+                }
+
+                if !message.isRecalled {
+                    Button {
+                        UIPasteboard.general.string = message.text
+                    } label: {
+                        Label("复制", systemImage: "doc.on.doc")
+                    }
                 }
 
                 Button(role: .destructive, action: onDelete) {
