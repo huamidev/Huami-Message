@@ -260,6 +260,14 @@ struct RootView: View {
         }
         .task(id: auth.isSignedIn) {
             AppLog.info(.data, "同步任务开始：isSignedIn=\(auth.isSignedIn)")
+
+            // 申请"本机提醒"的权限，并把 delegate 装上。
+            //
+            // ⚠️ 必须有人调它 —— 少了这一步，后面发的通知和图标红点
+            //    全都**悄无声息地什么也不发生**（系统直接忽略未授权的请求）。
+            //    放在这里而不是 App init：权限弹窗要等界面出来再弹，
+            //    不然用户还不知道这是什么 App 就被问"要不要允许通知"。
+            MessageNotifier.shared.start()
             // 开发用开关
             if DevFlags.resetTerms { hasAcceptedTerms = false }
             if DevFlags.acceptTerms { hasAcceptedTerms = true }
@@ -293,6 +301,8 @@ struct RootView: View {
             // （A 看起来正常，是因为它经历过"切回前台"，走了另一条路。）
             await store.refreshFriends()
             await store.refreshRequests()
+            // 同步完顺便把图标红点对上 —— 上次退出时的数字可能已经过时了
+            store.refreshBadge()
 
             // 开发自检：进主界面之后再退出登录，验证会不会回到登录页
             if DevFlags.devSignOut {

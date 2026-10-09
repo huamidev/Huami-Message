@@ -554,6 +554,7 @@ final class ChatStore {
         conversations[index].lastMessage = ""
         conversations[index].lastTime = .distantPast
         conversations[index].unreadCount = 0
+        refreshBadge()
     }
 
     /// 删除单条消息
@@ -629,6 +630,29 @@ final class ChatStore {
     /// 而且它和"数据按谁隔离"用的是同一个值 —— 用同一个来源，
     /// 就不会出现"界面认为是我、数据认为不是"这种错位。
     var myID: UUID? { UUID(uuidString: local.ownerIDString) }
+
+    /// 用户此刻正在看哪段会话。
+    ///
+    /// 用来决定"这条新消息要不要弹通知" —— 正在看的时候弹是打扰。
+    /// 由聊天页在出现/消失时设置。
+    var activeConversationID: UUID?
+
+    /// 所有会话的未读数加起来 —— 这就是图标上那个数字。
+    var unreadTotal: Int {
+        conversations.reduce(0) { $0 + $1.unreadCount }
+    }
+
+    /// 把未读总数写到 App 图标上。
+    ///
+    /// 【为什么图标红点是最重要的一件】
+    ///
+    /// 没有推送的情况下，"瞟一眼手机就知道有没有消息"靠的就是它。
+    /// 系统自己会把它画在图标上，不依赖 App 在不在跑。
+    func refreshBadge() {
+        Task { @MainActor in
+            MessageNotifier.shared.updateBadge(unreadTotal: unreadTotal)
+        }
+    }
 
     /// 改群名。服务端只允许群主改，别人会被数据库规则拒掉。
     func renameGroup(_ id: UUID, to title: String) async throws {
@@ -759,6 +783,7 @@ final class ChatStore {
         guard conversations[index].unreadCount != count else { return }
 
         conversations[index].unreadCount = count
+        refreshBadge()
         local.setUnread(count, for: friendID)   // 一起写进数据库，重启后不会又冒出来
     }
 
@@ -792,6 +817,25 @@ final class ChatStore {
         persist(message)
         messagesByFriend[message.friendID, default: []].append(message)
         touch(friendID: message.friendID, last: message.text, at: message.sentAt, increaseUnread: true)
+
+        // ── 本机提醒 ──
+        //
+        // 我们没有推送（用不了），所以这是"别人发消息时你会知道"的唯一途径。
+        // 两件事：弹一条通知 + 更新图标上的红点。
+        //
+        // 正在看这段会话时不弹 —— 消息就在眼前，再弹一下是打扰。
+        // 注意这里能走到，说明它是**真的新消息**（上面有去重守卫），
+        // 所以同步历史时不会一次性弹一堆。
+        if activeConversationID != message.friendID {
+            let name = conversations.first { $0.friend.id == message.friendID }?
+                .friend.displayName ?? "新消息"
+            MessageNotifier.shared.notifyNewMessage(
+                from: name,
+                body: message.preview,
+                conversationID: message.friendID
+            )
+        }
+        refreshBadge()
     }
 
     // MARK: - 辅助

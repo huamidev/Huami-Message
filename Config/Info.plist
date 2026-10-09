@@ -10,6 +10,16 @@
 	-->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>发语音消息时需要录音。只在你按住录音键的时候录，松开就停。</string>
+	<!--
+	  后台刷新。
+	  没有推送，只能靠系统偶尔给一次机会，让我们在后台收一次消息。
+	  ⚠️ 系统按使用习惯决定给不给，可能几小时才一次 —— 所以它只是
+	  "顺便多收一点"，不是提醒手段。真正的提醒靠图标红点和本机通知。
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

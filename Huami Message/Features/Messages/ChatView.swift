@@ -497,6 +497,12 @@ struct ChatView: View {
             //
             // 教训：想让某件事"错开时间"之前，先问它是不是根本不必发生。
             store.markRead(conversation.friend.id)
+            // 告诉 store"用户正在看这段"——收到新消息时不弹通知
+            store.activeConversationID = conversation.friend.id
+        }
+        .onDisappear {
+            // 离开时清掉，不然回到列表页还当你在看
+            store.activeConversationID = nil
         }
         // 开发用：
         //   -openPolish 1  自动填一句示例并打开润色面板
