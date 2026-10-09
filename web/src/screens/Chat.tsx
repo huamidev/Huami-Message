@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { loadMessages, sendMessage, conversationKeyOf } from '../lib/api'
+import {
+  loadMessages, sendMessage, conversationKeyOf,
+  uploadChatFile, sendAttachmentMessage, compressImage,
+} from '../lib/api'
 import type { Conversation, Message } from '../lib/types'
 import Avatar from '../components/Avatar'
 
@@ -33,7 +36,9 @@ export default function Chat({
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
 
+  const fileRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   /// 用户是不是"贴着底部"。不贴的时候来新消息就不自动滚。
   const stickToBottom = useRef(true)
@@ -156,6 +161,32 @@ export default function Chat({
     }
   }
 
+  /// 选了一张图 → 压缩 → 上传 → 发出去。
+  ///
+  /// 全程给用户看着：压缩和上传加起来可能要一两秒，
+  /// 期间什么都不显示的话，用户会以为没点上、又点一次。
+  async function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''            // 清掉，这样选同一张图也能再触发一次
+    if (!file) return
+
+    setError(null)
+    stickToBottom.current = true
+    setUploading(true)
+    try {
+      const blob = await compressImage(file)
+      const url = await uploadChatFile(myID, blob, 'jpg', 'image/jpeg')
+      const saved = await sendAttachmentMessage({
+        myID, conversationID: conversation.id, isGroup, imageURL: url,
+      })
+      setMessages((prev) => [...prev, saved])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '图片发送失败')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div className="chat">
       <header className="topbar chat-topbar">
@@ -174,7 +205,24 @@ export default function Chat({
 
       {error && <p className="msg error pad">{error}</p>}
 
+      {uploading && <p className="muted small pad">图片发送中…</p>}
+
       <form className="composer" onSubmit={send}>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={pickImage}
+        />
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => fileRef.current?.click()}
+          title="发图片"
+        >
+          📎
+        </button>
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -222,7 +270,12 @@ function Bubble({
         <Avatar name={conversation.name} seed={conversation.avatarSeed} url={conversation.avatarURL} size={34} />
       )}
       {mine && <span className="stamp">{time}</span>}
-      <div className={mine ? 'bubble mine' : 'bubble theirs'}>{message.body}</div>
+      <div className={mine ? 'bubble mine' : 'bubble theirs'}>
+        {message.image_url && (
+          <img className="bubble-image" src={message.image_url} alt="" loading="lazy" />
+        )}
+        {message.body && <span>{message.body}</span>}
+      </div>
       {!mine && <span className="stamp">{time}</span>}
     </div>
   )

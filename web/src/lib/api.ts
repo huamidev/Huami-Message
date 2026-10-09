@@ -322,3 +322,98 @@ export async function loadGroupMembers(
     role: roleByID.get(p.id as UUID) ?? 'member',
   }))
 }
+
+// ── 文件上传 ───────────────────────────────────────────────────────────
+
+/// 传一个文件上去，返回可以直接显示的网址。
+///
+/// 【路径的第一层必须是自己的用户 ID】
+///
+/// 存储的权限规则就是按这个判的：只能往"自己那一格"里写。
+/// 换个人、或者换个路径格式，服务器会直接拒绝（403）。
+/// 这是 iOS 版和网页版都必须遵守的同一条规矩。
+export async function uploadChatFile(
+  myID: UUID,
+  blob: Blob,
+  fileExtension: string,
+  contentType: string,
+): Promise<string> {
+  const path = `${myID.toLowerCase()}/${crypto.randomUUID()}.${fileExtension}`
+  const { error } = await supabase.storage
+    .from('chat-images')
+    .upload(path, blob, { contentType, cacheControl: '3600', upsert: false })
+  if (error) throw error
+
+  // 存进消息里的是**公开网址** —— 不含凭证.
+  // 桶是公开读、按路径限制写的，所以这个网址谁拿到都能看。
+  const { data } = supabase.storage.from('chat-images').getPublicUrl(path)
+  return data.publicUrl
+}
+
+/// 发一条带附件的消息（图片 / 语音都用它）。
+///
+/// body 可以留空字符串 —— 图片消息没有文字内容，
+/// 但数据库那一列是 not null，所以给个空串。
+export async function sendAttachmentMessage(params: {
+  myID: UUID
+  conversationID: UUID
+  isGroup: boolean
+  body?: string
+  imageURL?: string
+  audioURL?: string
+  audioSeconds?: number
+}): Promise<Message> {
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({
+      id: crypto.randomUUID(),
+      sender_id: params.myID,
+      recipient_id: params.isGroup ? null : params.conversationID,
+      conversation_id: params.isGroup ? params.conversationID : null,
+      body: params.body ?? '',
+      image_url: params.imageURL ?? null,
+      audio_url: params.audioURL ?? null,
+      audio_seconds: params.audioSeconds ?? null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Message
+}
+
+/// 把用户选的图片压小再传。
+///
+/// 【为什么必须压】
+///
+/// 现在手机随手拍一张就是 3～5 MB。直接传的话：
+///   · 用户要等好几秒（还是在流量上）
+///   · 服务器存储很快被占满
+///   · 对方打开聊天页要下原图，一屏几张图就是十几 MB
+///
+/// 压到最长边 1600、JPEG 质量 0.8 —— 在手机屏上肉眼看不出区别，
+/// 体积通常降到十分之一以内。
+///
+/// 用 canvas 做，不引任何图片处理库：浏览器自带的够用，
+/// 而且不引入依赖就不会有"这个库更新了 API 变了"的问题。
+export async function compressImage(file: File): Promise<Blob> {
+  const MAX_EDGE = 1600
+  const bitmap = await createImageBitmap(file)
+
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+  const width = Math.round(bitmap.width * scale)
+  const height = Math.round(bitmap.height * scale)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('这台设备的浏览器画不了图')
+  ctx.drawImage(bitmap, 0, 0, width, height)
+  bitmap.close()
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', 0.8),
+  )
+  if (!blob) throw new Error('图片压缩失败')
+  return blob
+}

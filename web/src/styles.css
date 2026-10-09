@@ -285,3 +285,17 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 .tick { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--separator);
         display: grid; place-items: center; font-size: 13px; color: #fff; flex: 0 0 auto; }
 .tick.on { background: var(--accent); border-color: var(--accent); }
+
+/* 图片消息 */
+.bubble-image {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 12px;
+  /* 图还没下完时先占个位，避免气泡一会儿大一会儿小 */
+  background: rgba(0, 0, 0, 0.05);
+  min-width: 80px;
+  min-height: 80px;
+  object-fit: cover;
+}
+.bubble .bubble-image + span { display: block; margin-top: 6px; }
