@@ -36,6 +36,26 @@ struct ChatView: View {
 
     @State private var showReportSheet = false
     @State private var showGroupInfo = false
+
+    /// 列表是否已经**定位完成**。
+    ///
+    /// 【为什么需要它 —— 用户报的"进去会抖动一下"】
+    ///
+    /// 进聊天页时消息列表要挪两次位置：
+    ///   ① 消息从 0 条变成 N 条，触发一次滚动
+    ///   ② 280 毫秒后再补一次（LazyVStack 只实现了一部分内容，
+    ///      按当时的高度算锚点会偏，所以必须补）
+    ///
+    /// 这两次都会让用户看到"唰"地动一下。
+    /// 而第②次是**必需的**（不补的话长对话最后两条看不见）。
+    ///
+    /// 所以正确的做法不是去掉某一次，而是**在定位完成之前先别让它露面** ——
+    /// 顶栏、输入栏、背景照常出现，只有消息列表等 280 毫秒后
+    /// 一次性出现在正确的位置上。用户看不到过程，只看到结果。
+    @State private var isSettled = false
+
+    /// 消息列表是不是已经做过"第一次定位"（那一次不能带动画）
+    @State private var didPositionOnce = false
     @State private var showClearConfirm = false
 
     /// 每条消息对应的判断结果。key 是那条消息的 id。
@@ -233,6 +253,7 @@ struct ChatView: View {
             // 所以是 ZStack（叠着），不是 VStack（切开）。
             ZStack(alignment: .bottom) {
                 messageList(proxy: proxy)
+                    .opacity(isSettled ? 1 : 0)
 
                 VStack(spacing: 0) {
                     // ── 底部渐隐**去掉了** ──
@@ -507,6 +528,10 @@ struct ChatView: View {
             //    否则用户会看到打开瞬间画面"唰"地跳一下。
             try? await Task.sleep(for: .milliseconds(280))
             proxy.scrollTo(bottomAnchor, anchor: .bottom)
+            // 定位好了再露出来（不加动画：让用户看到的第一个画面
+            // 就已经是最终位置，而不是"从偏移位置滑过去"）
+            didPositionOnce = true
+            isSettled = true
 
             if DevFlags.openPolish, draft.isEmpty {
                 // ⚠️ 必须等一下再打开。
@@ -954,6 +979,20 @@ struct ChatView: View {
         .onChange(of: messages.count) { oldCount, newCount in
             // 对方来了新消息 → 自动分析一次（内部会判断开关和防抖）
             autoAnalyzeIfNeeded()
+
+            // ⚠️ **第一次有内容时不能带动画。**
+            //
+            // 进页面的那一刻列表是空的（本地数据还在读），
+            // 数据一到 messages.count 就从 0 变成 N —— 这里会以为
+            // "来新消息了"，于是播一段 0.32 秒的滚动动画。
+            // 用户看到的就是"进去抖动一下"。
+            //
+            // 第一次直接放到正确位置（人眼看不到这一帧，因为
+            // 列表在 isSettled 之前是透明的）。
+            guard didPositionOnce else {
+                proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                return
+            }
 
             if isNearBottom {
                 withAnimation(.snappy(duration: 0.32)) {
