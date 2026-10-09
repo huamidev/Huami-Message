@@ -742,6 +742,22 @@ final class ChatStore {
     /// 设置未读数（0 = 已读，1 = 手动标记成未读）
     func setUnread(_ count: Int, for friendID: Friend.ID) {
         guard let index = conversations.firstIndex(where: { $0.friend.id == friendID }) else { return }
+
+        // ⚠️ **值没变就什么都别做。**
+        //
+        // 【为什么这一行能修掉"进聊天页消息突然跳下去"】
+        //
+        // conversations 是 @Observable。往它里面写一下（哪怕写的是同样的值），
+        // 所有读它的视图都会重算 —— 包括聊天页的滚动定位。
+        //
+        // 而"进一个没有未读的聊天"是最常见的情况：未读数本来就是 0，
+        // 我们却郑重其事地又写了一次 0，触发一次整页重算，
+        // 滚动位置跟着跳一下。用户看到的就是"信息突然下滑到不可见，
+        // 上滑才拉出来"。
+        //
+        // 顺带也是数据库那边少一次没意义的写入 + commit。
+        guard conversations[index].unreadCount != count else { return }
+
         conversations[index].unreadCount = count
         local.setUnread(count, for: friendID)   // 一起写进数据库，重启后不会又冒出来
     }
