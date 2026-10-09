@@ -279,6 +279,19 @@ struct RootView: View {
             guard auth.isSignedIn else { return }
 
             await store.start()
+
+            // ⚠️ **这一行原来漏了，是个真 bug。**
+            //
+            // start() 只同步"消息"和"会话列表"，**它不拉好友**。
+            // 拉好友的只有 refreshFriends()，而它原来只在"切回前台"
+            // （onChange scenePhase）里被调用。
+            //
+            // 于是：**在 App 里直接登录（不切前后台）→ 好友永远不同步。**
+            // 用户的实测正是这样：A 账号一切正常，切到 B 账号后
+            // 通讯录空的、消息也收不到 —— 因为 B 从登录那一刻起就没拉过好友。
+            //
+            // （A 看起来正常，是因为它经历过"切回前台"，走了另一条路。）
+            await store.refreshFriends()
             await store.refreshRequests()
 
             // 开发自检：进主界面之后再退出登录，验证会不会回到登录页
