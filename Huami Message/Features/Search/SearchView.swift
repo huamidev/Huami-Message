@@ -148,7 +148,7 @@ struct SearchView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(hit.friend.name)
+                    Text(hit.friend.displayName)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Theme.textPrimary)
 

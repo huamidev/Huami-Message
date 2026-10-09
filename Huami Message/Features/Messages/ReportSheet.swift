@@ -61,7 +61,7 @@ struct ReportSheet: View {
                 Text("举报对象")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textTertiary)
-                Text(friend.name)
+                Text(friend.displayName)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
             }

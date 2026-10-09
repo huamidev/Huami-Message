@@ -21,7 +21,7 @@ struct ContactsView: View {
 
     /// 按名字排 —— 找人时人是按字母/拼音顺序回忆的，不是按聊天时间
     private var sorted: [Conversation] {
-        store.conversations.sorted { $0.friend.name < $1.friend.name }
+        store.conversations.sorted { $0.friend.displayName < $1.friend.displayName }
     }
 
     var body: some View {
@@ -177,7 +177,7 @@ struct ContactsView: View {
                                url: conversation.friend.avatarURL)
 
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(conversation.friend.name)
+                            Text(conversation.friend.displayName)
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(Theme.textPrimary)
                             Text(conversation.lastMessage.isEmpty

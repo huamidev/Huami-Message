@@ -154,7 +154,7 @@ struct ConversationListView: View {
             // 按名字打开（更精确）
             if !DevFlags.openChatName.isEmpty {
                 if let target = store.conversations.first(where: {
-                    $0.friend.name == DevFlags.openChatName
+                    $0.friend.displayName == DevFlags.openChatName
                 }) {
                     path = [target]
                 }
@@ -245,7 +245,7 @@ private struct ConversationRow: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(conversation.friend.name)
+                    Text(conversation.friend.displayName)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
 

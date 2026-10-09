@@ -294,7 +294,7 @@ struct ChatView: View {
         // ⚠️ 这个修饰符必须挂在**占住屏幕底部的那一整层**上（这一页），
         //    挂在输入栏内部不生效 —— 我先挂在里面试过。
         .defersSystemGestures(on: .bottom)
-        .navigationTitle(conversation.friend.name)
+        .navigationTitle(conversation.friend.displayName)
         .navigationBarTitleDisplayMode(.inline)
         // 导航栏也做成毛玻璃 —— 消息从它下面滚过去时，
         // 会透出一层模糊的颜色在动。这种「边缘也在呼吸」的细节很值钱。
@@ -334,7 +334,7 @@ struct ChatView: View {
             // 底下的消息滚过去时从它两边经过 —— Telegram 就是这么做。
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
-                    Text(conversation.friend.name)
+                    Text(conversation.friend.displayName)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
@@ -375,7 +375,7 @@ struct ChatView: View {
             .presentationCornerRadius(30)
         }
         // 删除是不可撤销的，必须再问一次 —— 这是"防手滑"的基本礼貌
-        .confirmationDialog("清空和 \(conversation.friend.name) 的聊天记录？",
+        .confirmationDialog("清空和 \(conversation.friend.displayName) 的聊天记录？",
                             isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("清空聊天记录", role: .destructive) {
                 Haptics.warning()
@@ -535,7 +535,7 @@ struct ChatView: View {
         HStack(spacing: 7) {
             Image(systemName: "hand.raised.fill")
                 .font(.system(size: 12))
-            Text("已拉黑 \(conversation.friend.name)，你不会再收到他的消息")
+            Text("已拉黑 \(conversation.friend.displayName)，你不会再收到他的消息")
                 .font(.system(size: 12, weight: .medium))
             Spacer()
             Button("取消") {
@@ -565,7 +565,7 @@ struct ChatView: View {
 
         let context = store.assistantContext(
             for: conversation.friend.id,
-            friendName: conversation.friend.name
+            friendName: conversation.friend.displayName
         )
 
         // 这次到底发了多少条，如实显示给用户 ——

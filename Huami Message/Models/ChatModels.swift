@@ -79,20 +79,54 @@ struct Report: Identifiable, Hashable {
 /// 注意这里存的是 avatarSeed（一个数字）而不是颜色。
 /// 原因：好友信息要从数据库和服务器来，颜色是存不进去的，但数字可以。
 /// 头像颜色由这个数字在界面上现算出来。
+/// 一段对话是「一对一」还是「群聊」。
+///
+/// 【为什么给 Friend 加这个字段，而不是新造一个类型】
+///
+/// 本地库里一对一和群聊**共用一行**（StoredFriend）——
+/// 因为消息上只有一个 friendID。改成两套模型等于把"消息属于谁"
+/// 重做一遍，那会动到已经存在的聊天记录，而那些是真说过的话。
+///
+/// 加一个 kind、默认 .direct，老数据一个字都不用改，
+/// 而所有读 friend.name 的地方改成读 displayName 就能自动适配。
+enum ConversationKind: String, Codable {
+    case direct
+    case group
+}
+
 struct Friend: Identifiable, Hashable {
     let id: UUID
     var name: String
     var avatarSeed: Int
 
-    init(id: UUID = UUID(), name: String, avatarSeed: Int, avatarURL: URL? = nil) {
+    init(id: UUID = UUID(), name: String, avatarSeed: Int, avatarURL: URL? = nil,
+         kind: ConversationKind = .direct, title: String? = nil) {
         self.id = id
         self.name = name
         self.avatarSeed = avatarSeed
         self.avatarURL = avatarURL
+        self.kind = kind
+        self.title = title
     }
 
     /// 名字的第一个字，暂时当头像用
-    var initial: String { String(name.prefix(1)) }
+    var initial: String { String(displayName.prefix(1)) }
+
+    /// 一对一还是群聊。**老数据一律当成 .direct**（默认值）。
+    var kind: ConversationKind = .direct
+
+    /// 群名。一对一为空 —— 一对一的标题就是对方的名字。
+    var title: String? = nil
+
+    /// 界面上显示的名字。
+    ///
+    /// 群聊用群名，一对一回退到对对方的名字。
+    /// 有了它，原来所有读 `friend.name` 的地方只要改成 `displayName`，
+    /// 一对一的行为完全不变，群聊自动就有名字了。
+    var displayName: String {
+        if kind == .group, let title, !title.isEmpty { return title }
+        return name
+    }
 
     /// 好友的头像地址。没设置过就是 nil（那时显示彩色方块 + 首字）。
     ///

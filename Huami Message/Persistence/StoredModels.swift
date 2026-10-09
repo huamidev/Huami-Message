@@ -44,6 +44,16 @@ final class StoredFriend {
     /// 头像照片地址（存字符串，理由同 message）。
     var avatarURLString: String?
 
+    /// 一对一还是群聊。
+    ///
+    /// ⚠️ **必须给默认值**。不给的话，数据库升级结构时旧记录读不出来 ——
+    /// 这个习惯救过我们几次（isBlocked 当年也是这么加的）。
+    /// 默认 direct：所有老数据自动都是"一对一"，行为和以前完全一样。
+    var kindRaw: String = ConversationKind.direct.rawValue
+
+    /// 群名。一对一为空。
+    var title: String?
+
     /// 未读消息数。
     ///
     /// 严格说「未读」属于「会话」而不是「好友」，但第一版只有一对一，
@@ -90,11 +100,15 @@ final class StoredFriend {
         self.name = friend.name
         self.avatarSeed = friend.avatarSeed
         self.avatarURLString = friend.avatarURL?.absoluteString
+        self.kindRaw = friend.kind.rawValue
+        self.title = friend.title
     }
 
     var asFriend: Friend {
         Friend(id: id, name: name, avatarSeed: avatarSeed,
-            avatarURL: avatarURLString.flatMap(URL.init(string:)))
+            avatarURL: avatarURLString.flatMap(URL.init(string:)),
+            kind: ConversationKind(rawValue: kindRaw) ?? .direct,
+            title: title)
     }
 }
 
