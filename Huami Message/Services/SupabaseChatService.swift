@@ -84,7 +84,9 @@ final class SupabaseChatService: ChatService {
         // 按时间倒序拿到的，所以**第一次遇到某个人时那条就是最新的**
         var lastByFriend: [UUID: MessageRow] = [:]
         for row in recent {
-            let other = row.otherParty(myID: myID)
+            // otherParty 现在是可选的（群消息没有"对方"，只有"哪段对话"）。
+            // 解不出来的行直接跳过 —— 一条脏数据不该让整个会话列表崩掉。
+            guard let other = row.otherParty(myID: myID) else { continue }
             if lastByFriend[other] == nil { lastByFriend[other] = row }
         }
 
@@ -255,13 +257,22 @@ final class SupabaseChatService: ChatService {
     // 发消息
     // ========================================================================
 
-    func send(_ message: Message) async throws -> Message {
+    /// 发一条消息。
+    ///
+    /// `isGroup` 决定这条消息走哪条路：
+    ///   一对一 → recipient_id 有值，conversation_id 为空
+    ///   群聊   → recipient_id 为空，conversation_id 有值
+    ///
+    /// 数据库那边有约束钉着"不能两边都填 / 不能两边都空"，
+    /// 所以这里填错了会当场报错，而不是留下一条归属不明的消息。
+    func send(_ message: Message, isGroup: Bool) async throws -> Message {
         guard let myID else { throw ChatError.network }
 
         let payload = NewMessageRow(
             id: message.id,
             senderId: myID,
-            recipientId: message.friendID,
+            recipientId: isGroup ? nil : message.friendID,
+            conversationId: isGroup ? message.friendID : nil,
             body: message.text,
             imageUrl: message.imageURL?.absoluteString,
             audioUrl: message.audioURL?.absoluteString,
@@ -419,7 +430,10 @@ struct ProfileRow: Decodable {
 struct MessageRow: Decodable {
     let id: UUID
     let senderId: UUID
-    let recipientId: UUID
+    /// 一对一的收件人。**群消息这里是空的** —— 所以必须是可选。
+    let recipientId: UUID?
+    /// 群消息属于哪段对话。一对一为空。
+    let conversationId: UUID?
     let body: String
     let imageUrl: String?
     let audioUrl: String?
@@ -427,16 +441,23 @@ struct MessageRow: Decodable {
     let polishedWith: String?
     let createdAt: Date
 
-    /// 这条消息的另一方是谁（对我而言）
-    func otherParty(myID: UUID) -> UUID {
-        senderId == myID ? recipientId : senderId
+    /// 这条消息属于哪段对话 —— 也就是本地模型里的 friendID。
+    ///
+    /// 一对一：对方是谁
+    /// 群聊：conversation_id（群消息没有"对方"这个概念，只有"哪段对话"）
+    func otherParty(myID: UUID) -> UUID? {
+        if let conversationId { return conversationId }
+        guard let recipientId else { return nil }
+        return senderId == myID ? recipientId : senderId
     }
 
     func asMessage(myID: UUID) -> Message {
         let mine = senderId == myID
+        // otherParty 现在可能为空（数据异常时）。用 senderId 兜底 ——
+        // 宁可把消息挂在"发件人"上，也不要因为一条脏数据整批解码失败。
         return Message(
             id: id,
-            friendID: otherParty(myID: myID),
+            friendID: otherParty(myID: myID) ?? senderId,
             text: body,
             imageURL: imageUrl.flatMap(URL.init(string:)),
             audioURL: audioUrl.flatMap(URL.init(string:)),
@@ -453,7 +474,10 @@ struct MessageRow: Decodable {
 struct NewMessageRow: Encodable {
     let id: UUID
     let senderId: UUID
-    let recipientId: UUID
+    /// 一对一填这个，群聊为 nil
+    let recipientId: UUID?
+    /// 群聊填这个，一对一为 nil
+    let conversationId: UUID?
     let body: String
     let imageUrl: String?
     let audioUrl: String?

@@ -35,7 +35,8 @@ protocol ChatService {
     /// 把一条消息发出去。
     /// 参数是已经组装好的 Message，返回服务器「确认收到」后的版本
     /// （真后端会在这里补上服务器生成的时间和编号）。
-    func send(_ message: Message) async throws -> Message
+    /// 发一条消息。`isGroup` 决定走一对一还是群聊那条路。
+    func send(_ message: Message, isGroup: Bool) async throws -> Message
 
     /// 服务器「推」过来的新消息 —— 也就是实时收消息。
     ///

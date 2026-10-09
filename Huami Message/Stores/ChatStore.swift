@@ -399,8 +399,12 @@ final class ChatStore {
 
     /// 把一条消息真正送出去，并根据结果更新它的状态。
     private func deliver(_ message: Message) async {
+        // 这条消息是发给一个人的，还是发给一个群的？
+        // 从会话列表里查 —— 那是我们唯一权威的"这段会话是什么类型"的来源。
+        let isGroup = conversations.first { $0.friend.id == message.friendID }?
+            .friend.kind == .group
         do {
-            let confirmed = try await remote.send(message)
+            let confirmed = try await remote.send(message, isGroup: isGroup)
 
             // ⚠️ 这里踩过一个坑，记下来：
             // 我原来直接存服务器返回的 confirmed，结果状态一直是"发送中" ——

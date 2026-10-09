@@ -55,7 +55,7 @@ final class MockChatService: ChatService {
         return messages[friendID] ?? []
     }
 
-    func send(_ message: Message) async throws -> Message {
+    func send(_ message: Message, isGroup: Bool) async throws -> Message {
         try await Task.sleep(for: latency)
 
         // 调试开关：强制失败，用来验证「发送失败 + 重试」的界面。
