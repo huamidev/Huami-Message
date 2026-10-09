@@ -34,6 +34,11 @@ final class AuthStore {
     /// 点邮件里的确认链接跳回来时要告诉用户的话。nil 表示不显示。
     var linkMessage: String?
 
+    /// 扫到的、等着去加的那个用户名。
+    ///
+    /// 界面观察它：一变就把"加好友"页打开并把用户名填好。
+    var scannedUsername: String?
+
     /// 登录状态能不能记住（记不住时界面要如实告诉用户）
     var isSessionPersisted: Bool { service.isSessionPersisted }
 
@@ -113,6 +118,20 @@ final class AuthStore {
         AppLog.info(.network, "handleLink 收到：\(url.absoluteString)（scheme=\(url.scheme ?? "无")）")
         guard url.scheme == AppLink.scheme else {
             AppLog.info(.network, "scheme 不匹配，忽略")
+            return
+        }
+
+        // ⚠️ **先判断是不是"加好友"的码。**
+        //
+        // 原来这里不分青红皂白，任何 huami:// 链接都往下走去换登录凭证，
+        // 换不到就报"邮箱验证成功" —— 扫一个加好友的码会弹出
+        // "邮箱验证成功"，用户完全不知道发生了什么。
+        //
+        // 这类"一个入口处理多种意图"的地方，第一件事必须是**区分意图**。
+        if let username = AppLink.addUsername(from: url) {
+            scannedUsername = username
+            AppLog.info(.network, "扫到加好友的码：\(username)")
+            Haptics.success()
             return
         }
 

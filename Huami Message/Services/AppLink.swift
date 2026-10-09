@@ -24,6 +24,38 @@ enum AppLink {
     ///   3. Supabase 后台 Redirect URLs 白名单里加的那条
     static let confirmURL = "huami://confirm"
 
+    /// 加好友的码里装的东西。
+    ///
+    /// 【为什么不是一个纯用户名，而是一个链接】
+    ///
+    /// 原来二维码里装的就是"test002"这串字。用系统相机扫它，
+    /// iOS 只会把它当普通文本显示出来 —— **不会打开 App，也加不了好友**。
+    ///
+    /// 换成 `huami://add?u=test002` 之后：
+    ///   · 系统相机认得这是个链接，点一下就直接打开 App
+    ///   · 打开之后落在"加好友"流程里，用户名已经填好
+    ///   · 微信、备忘录这些能识别链接的地方也一样能用
+    ///
+    /// 顺带说一句：这也是为什么 `huami` 这个方案必须注册在 Info.plist 里
+    /// （已经注册了）。
+    static func addURL(username: String) -> URL {
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = "add"
+        components.queryItems = [URLQueryItem(name: "u", value: username)]
+        return components.url ?? URL(string: "\(scheme)://add?u=\(username)")!
+    }
+
+    /// 从"加好友"的链接里取出用户名。
+    /// 不是这类链接就返回 nil（调用方据此判断该走哪条路）。
+    static func addUsername(from url: URL) -> String? {
+        guard url.scheme == scheme, url.host == "add" else { return nil }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        guard let raw = items?.first(where: { $0.name == "u" })?.value else { return nil }
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
     /// 从跳回来的链接里取出登录凭证。
     ///
     /// 【为什么凭证在 `#` 后面而不是 `?` 后面】

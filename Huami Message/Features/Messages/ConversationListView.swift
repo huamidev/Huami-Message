@@ -21,6 +21,9 @@ struct ConversationListView: View {
     @Environment(ChatStore.self) private var store
     @Environment(AuthStore.self) private var auth
 
+    /// 扫到的用户名，等着弹"加好友"页
+    @State private var scannedToAdd: ScannedCode?
+
     /// 是否正在显示「加好友」
     @State private var showAddFriend = false
 
@@ -164,6 +167,30 @@ struct ConversationListView: View {
             guard DevFlags.openChat, let first = store.conversations.first else { return }
             path = [first]
         }
+    
+        // ── 扫到加好友的码 → 自动打开"加好友"并把用户名填好 ──
+        //
+        // ⚠️ 挂在这里（body 的最外层），不能挂在 .overlay { } 里面 ——
+        //    挂在里面会落到那个 if 语句上，编译报
+        //    "cannot infer contextual base in reference to member 'onChange'"。
+        //    这个错我今天犯了四次，都是把修饰符插进了错误的层级。
+        //
+        // onChange 管"App 已经开着时扫"；onAppear 管
+        // "App 是关着的、扫码把它叫起来"（那种情况下 onChange 不会触发，
+        //  因为值在页面出现之前就已经设好了）。
+        .onChange(of: auth.scannedUsername) { _, name in
+            guard let name else { return }
+            scannedToAdd = ScannedCode(value: name)
+        }
+        .onAppear {
+            if let name = auth.scannedUsername {
+                scannedToAdd = ScannedCode(value: name)
+            }
+        }
+        .sheet(item: $scannedToAdd) { item in
+            AddFriendView(initialCode: item.value)
+                .environment(store)
+        }
     }
 
     /// 「演示数据」横幅
@@ -296,4 +323,14 @@ private struct ConversationRow: View {
         formatter.dateFormat = Calendar.current.isDateInToday(date) ? "HH:mm" : "M/d"
         return formatter.string(from: date)
     }
+}
+
+/// 把字符串包一层，才能用 `.sheet(item:)`。
+///
+/// 为什么不用 `isPresented` + 一个单独的字符串：那样弹出来的那一刻
+/// 还得再去读一遍那个值，中间可能已经被别的地方改掉或者清空了。
+/// 用 item 就是**把内容跟着这一次弹出一起带进去**，不会读错。
+private struct ScannedCode: Identifiable {
+    let value: String
+    var id: String { value }
 }

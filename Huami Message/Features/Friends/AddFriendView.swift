@@ -18,7 +18,11 @@ struct AddFriendView: View {
     @Environment(ChatStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
+    /// 从二维码扫进来的用户名 —— 有的话进页面就填好、并且自动查一次。
+    var initialCode: String = ""
+
     @State private var inputCode = ""
+    @State private var didUseInitialCode = false
     @State private var isAdding = false
 
     /// 找到的人（先看他主页，再决定加不加）
@@ -49,6 +53,7 @@ struct AddFriendView: View {
             .scrollDismissesKeyboard(.interactively)
             .background(AppBackground())
             .navigationTitle("加好友")
+            .task { useInitialCodeIfNeeded() }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -69,7 +74,10 @@ struct AddFriendView: View {
                 Spacer()
             }
 
-            QRCodeView(text: myUsername)
+            // ⚠️ 装的是**链接**，不是光秃秃的用户名。
+            //    用户名扫出来只是一串字，系统不会打开 App；
+            //    链接扫出来点一下就能直接进"加好友"。
+            QRCodeView(text: AppLink.addURL(username: myUsername).absoluteString)
                 .padding(.top, 2)
                 .onTapGesture {
                     copyCode()
@@ -274,6 +282,19 @@ struct AddFriendView: View {
     }
 
     /// 先找人，不直接加。
+    /// 如果是扫码进来的，进页面就把用户名填好并自动查一次。
+    ///
+    /// 放在 .onAppear 里而不是 init：查要发网络请求，
+    /// 那是"页面已经出现之后"才该做的事。
+    /// didUseInitialCode 保证只做一次 —— 不然用户自己改了输入框，
+    /// 页面一刷新又被扫进来的那个名字覆盖回去。
+    private func useInitialCodeIfNeeded() {
+        guard !didUseInitialCode, !initialCode.isEmpty else { return }
+        didUseInitialCode = true
+        inputCode = initialCode
+        search()
+    }
+
     private func search() {
         guard canAdd else { return }
         inputFocused = false
