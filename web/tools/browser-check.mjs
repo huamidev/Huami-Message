@@ -32,7 +32,15 @@ await page.fill('input[type=email]', EMAIL)
 await page.fill('input[type=password]', PASSWORD)
 await shot('2-填好登录')
 await page.click('button[type=submit]')
-await page.waitForTimeout(6000)
+// ⚠️ 等久一点。
+//
+// 本地正式版 6 秒够，但对**线上**不够 —— 第一次要下 JS、建连接、
+// 再跑几个 Supabase 查询。我拿线上地址跑的时候就是这里等太短，
+// 报出"会话条数 0"，白白怀疑了一遍部署。
+//
+// 更好的写法是等某个具体元素出现，但那样代码更长、也更容易写错；
+// 这个脚本的目的是"跑一遍看有没有坏"，等久一点最省事。
+await page.waitForTimeout(15000)
 await shot('3-登录后')
 
 const hasList = await page.locator('.conv').count()
@@ -158,10 +166,10 @@ if (beforeDelete > 3 && await target.count()) {
     const afterDelete = await page.locator('.bubble, .recalled').count()
     // 刷新一下，验证"删掉的就是删掉了"（不是只是这一帧没画）
     await page.reload({ waitUntil: 'networkidle' })
-    await page.waitForTimeout(4000)
+    await page.waitForTimeout(9000)
     // 刷新之后回到列表了，重新进这个会话
     await page.locator('.conv').first().click()
-    await page.waitForTimeout(3000)
+    await page.waitForTimeout(6000)
     const afterReload = await page.locator('.bubble, .recalled').count()
     console.log('④a4 删除单条:', beforeDelete, '→', afterDelete, '→ 刷新后', afterReload,
                 (afterDelete === beforeDelete - 1 && afterReload === afterDelete)
