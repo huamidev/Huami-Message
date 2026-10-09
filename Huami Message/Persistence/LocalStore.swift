@@ -477,7 +477,17 @@ final class SwiftDataLocalStore: LocalStore {
     /// 墓碑数量很少（用户删过的东西），整张表读出来完全没问题，
     /// 而且这样批量写入时就不用每条消息查一次了。
     private func deletedIDs() -> Set<UUID> {
-        Set(fetchAll(StoredTombstone.self).map(\.targetID))
+        // ⚠️ **必须按当前账号过滤。**
+        //
+        // 原来是不分账号地把整张墓碑表读出来，于是换账号之后，
+        // B 账号的同步会被 A 账号留下的墓碑挡住 ——
+        // 服务器返回了好友，本地却一条都存不进去，而且没有任何提示。
+        //
+        // 老墓碑的 ownerIDString 是""，不等于任何账号，
+        // 所以它们自动失效 —— 正好把踩过这个坑的用户治好。
+        Set(fetchAll(StoredTombstone.self)
+            .filter { $0.ownerIDString == ownerIDString }
+            .map(\.targetID))
     }
 
     // MARK: 内部 —— 写入
@@ -499,6 +509,8 @@ final class SwiftDataLocalStore: LocalStore {
     /// 已经记过就不重复记 —— 墓碑表不该因为用户反复删同一件事而膨胀。
     private func addTombstone(_ id: UUID, kind: String) {
         guard !deletedIDs().contains(id) else { return }
-        context.insert(StoredTombstone(targetID: id, kindRaw: kind))
+        let tombstone = StoredTombstone(targetID: id, kindRaw: kind)
+        tombstone.ownerIDString = ownerIDString      // 墓碑是账号级的
+        context.insert(tombstone)
     }
 }
