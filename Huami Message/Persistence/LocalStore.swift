@@ -445,14 +445,38 @@ final class SwiftDataLocalStore: LocalStore {
         for item in fetchAll(type) { context.delete(item) }
     }
 
+    /// ⚠️ **必须同时按 id 和账号查。**
+    ///
+    /// 【为什么 —— 用户报的"换个账号逻辑全都不对了"】
+    ///
+    /// 原来只按 id 查。而**同一条消息在两个账号的本地库里是同一个 id**
+    /// （它就是服务器上那一条）。于是：
+    ///
+    ///   · A 账号同步时找到这行，把它改成"归属 A"，isMine 也按 A 的角度写
+    ///   · 换到 B 账号，B 又找到**同一行**，改成"归属 B"，isMine 按 B 写
+    ///
+    /// 结果两个账号共用一行，谁最后写谁说了算 —— 表现出来就是
+    /// **换账号之后左右全反了**（isMine 是"气泡在左还是在右"的唯一依据）。
+    ///
+    /// 这和之前那个"墓碑没区分账号"是同一个毛病：
+    /// **本地数据是按账号隔离的，那么"找到某一行"也必须带上账号。**
+    /// 否则隔离只在读的时候成立，写的时候会把另一份覆盖掉。
+    ///
+    /// 这样改完，同一个 id 在每个账号下各有一行，互不干扰。
     private func findFriend(_ id: Friend.ID) -> StoredFriend? {
-        var descriptor = FetchDescriptor<StoredFriend>(predicate: #Predicate { $0.id == id })
+        let owner = ownerIDString
+        var descriptor = FetchDescriptor<StoredFriend>(
+            predicate: #Predicate { $0.id == id && $0.ownerIDString == owner }
+        )
         descriptor.fetchLimit = 1          // 只要一条，别把整张表读上来
         return fetch(descriptor).first
     }
 
     private func findMessage(_ id: Message.ID) -> StoredMessage? {
-        var descriptor = FetchDescriptor<StoredMessage>(predicate: #Predicate { $0.id == id })
+        let owner = ownerIDString
+        var descriptor = FetchDescriptor<StoredMessage>(
+            predicate: #Predicate { $0.id == id && $0.ownerIDString == owner }
+        )
         descriptor.fetchLimit = 1
         return fetch(descriptor).first
     }

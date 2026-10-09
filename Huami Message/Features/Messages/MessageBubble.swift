@@ -127,6 +127,19 @@ struct MessageBubble: View {
                         .foregroundStyle(isMine ? .white : Theme.textPrimary)
                         // 长按可以选中复制 —— 聊天 App 的基本功能，少一行都会被人抱怨
                         .textSelection(.enabled)
+                        // ⚠️ **最小宽度。**
+                        //
+                        // 不加的话，一两个字的短消息（"hi"、"1"）会被圆角
+                        // 切成一个**正圆** —— 因为圆角半径是按"正常气泡高度"
+                        // 定的，而短消息的宽度刚好和高度差不多。
+                        //
+                        // 用户的原话是"这个头像做的像个屎"（他以为那是头像，
+                        // 其实是一个被压成圆的气泡）。加了最小宽度之后，
+                        // 短消息是一个小胶囊，形状才是对的。
+                        //
+                        // 只加在文字这一支：图片和语音本来就有自己的尺寸，
+                        // 加在这里会显得空。
+                        .frame(minWidth: 34, alignment: isMine ? .trailing : .leading)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background { bubble }

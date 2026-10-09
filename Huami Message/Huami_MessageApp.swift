@@ -34,15 +34,35 @@ struct Huami_MessageApp: App {
         // 让"启动后多久"从这一刻算起 —— 不然它会从第一条日志才算起。
         AppLog.markLaunch()
 
-        let watch = Stopwatch()
+        // ── 把启动这一段拆成四份来量 ──
+        //
+        // 【为什么拆这么细】
+        //
+        // 原来只有"数据库"和"数据管家"两个数字，而"数据管家 311ms"
+        // 里面其实混着好几件不同的事（取 mainContext、建网络客户端、
+        // 建 store）。哪一件慢，决定了该往哪儿优化 ——
+        // 混在一起量，等于没量。
+        //
+        // 目标（Telegram 那种流畅）：**第一帧之前不做任何 I/O。**
+        // 拆开之后才能知道哪些必须挪走。
+        let watchContainer = Stopwatch()
         database = AppDatabase.make()
-        AppLog.info(.data, "本地数据库就绪，耗时 \(Stopwatch.format(watch.milliseconds))")
+        AppLog.info(.data, "① 建库（ModelContainer）：\(Stopwatch.format(watchContainer.milliseconds))")
 
-        // mainContext 是"主线程上用的那个数据库连接"。
-        // 界面相关的读写走它，是苹果推荐的默认做法。
-        let storeWatch = Stopwatch()
-        store = ChatStore(local: SwiftDataLocalStore(context: database.mainContext))
-        AppLog.info(.data, "数据管家就绪，耗时 \(Stopwatch.format(storeWatch.milliseconds))")
+        let watchContext = Stopwatch()
+        let context = database.mainContext
+        let contextMs = watchContext.milliseconds
+        AppLog.info(.data, "② 取 mainContext：\(Stopwatch.format(contextMs))")
+
+        let watchRemote = Stopwatch()
+        let remote = AppServices.makeChatService()
+        AppLog.info(.data, "③ 建网络客户端：\(Stopwatch.format(watchRemote.milliseconds))")
+
+        let watchStore = Stopwatch()
+        store = ChatStore(local: SwiftDataLocalStore(context: context), remote: remote)
+        AppLog.info(.data, "④ 建数据管家：\(Stopwatch.format(watchStore.milliseconds))")
+
+        AppLog.info(.data, "启动准备合计 \(Stopwatch.format(watchContainer.milliseconds + contextMs + watchRemote.milliseconds + watchStore.milliseconds))（全部在主线程上）")
     }
 
     var body: some Scene {
