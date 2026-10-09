@@ -6,6 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
     <meta name="theme-color" content="#F5F6F8" />
     <title>Huami Message</title>
+
+    <!-- PWA：让"添加到主屏幕"之后看起来像个 App -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+    <!-- iOS 不认 manifest 里的图标，得单独给一个 -->
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <!-- 全屏打开（iOS 上要写 apple-mobile-web-app-*，不然会带地址栏） -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Huami" />
+    <!-- 安卓地址栏也跟着主题色走 -->
+    <meta name="mobile-web-app-capable" content="yes" />
   </head>
   <body>
     <div id="root"></div>

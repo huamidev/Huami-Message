@@ -203,6 +203,12 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 
 .bubble {
   max-width: 72%;
+  /* ⚠️ 最小宽度。
+     不加的话，一两个字的短消息（"hi"）会被圆角切成一个**正圆** ——
+     圆角半径是按"正常气泡高度"定的，而短消息的宽度刚好和高度差不多。
+     用户的原话是"这个头像做的像个屎"（他以为那是头像，
+     其实是一个被压成圆的气泡）。iOS 版修过这个，网页版漏了。 */
+  min-width: 52px;
   padding: 9px 13px;
   border-radius: 18px;
   font-size: 16px;
