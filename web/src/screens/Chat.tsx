@@ -5,6 +5,7 @@ import {
   loadMessages, sendMessage, conversationKeyOf,
   uploadChatFile, sendAttachmentMessage, compressImage,
 } from '../lib/api'
+import { startRecording, formatSeconds } from '../lib/audio'
 import type { Conversation, Message } from '../lib/types'
 import Avatar from '../components/Avatar'
 
@@ -37,6 +38,8 @@ export default function Chat({
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const recorderRef = useRef<ReturnType<typeof startRecording> | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -161,6 +164,54 @@ export default function Chat({
     }
   }
 
+  /// 录一条语音。
+  ///
+  /// 【为什么是"点一下开始、再点一下结束"，而不是 iOS 那样的按住说话】
+  ///
+  /// 手机上"按住"很自然，但**手机浏览器里按住会遇到滚动、长按选中、
+  /// 系统菜单**这些干扰 —— 一不小心语音就断了，或者弹出一个菜单。
+  ///
+  /// 所以网页版用点击式：点一下开始（按钮变成"停止"），再点一下结束。
+  /// 多一次点击，换来的是"一定能录完"。
+  async function toggleRecording() {
+    setError(null)
+
+    // 正在录 → 结束并发送
+    if (recording && recorderRef.current) {
+      const rec = recorderRef.current
+      recorderRef.current = null
+      setRecording(false)
+      stickToBottom.current = true
+      setUploading(true)
+      try {
+        const { blob, seconds } = await rec.stop()
+        // 太短的多半是误触，直接丢掉（不到半秒连"喂"都说不完）
+        if (seconds < 0.5) return
+        const url = await uploadChatFile(myID, blob, 'wav', 'audio/wav')
+        const saved = await sendAttachmentMessage({
+          myID, conversationID: conversation.id, isGroup,
+          audioURL: url, audioSeconds: seconds,
+        })
+        setMessages((prev) => [...prev, saved])
+      } catch (err) {
+        if (err instanceof Error && err.message !== 'cancelled') {
+          setError(err.message)
+        }
+      } finally {
+        setUploading(false)
+      }
+      return
+    }
+
+    // 没在录 → 开始
+    try {
+      recorderRef.current = startRecording()
+      setRecording(true)
+    } catch {
+      setError('拿不到麦克风权限。检查一下浏览器的设置。')
+    }
+  }
+
   /// 选了一张图 → 压缩 → 上传 → 发出去。
   ///
   /// 全程给用户看着：压缩和上传加起来可能要一两秒，
@@ -229,9 +280,18 @@ export default function Chat({
           placeholder="说点什么…"
           autoComplete="off"
         />
-        <button className="btn primary" type="submit" disabled={!draft.trim()}>
-          发送
-        </button>
+        {draft.trim() ? (
+          <button className="btn primary" type="submit">发送</button>
+        ) : (
+          <button
+            type="button"
+            className={recording ? 'btn danger' : 'icon-btn'}
+            onClick={toggleRecording}
+            title={recording ? '结束并发送' : '按住说话'}
+          >
+            {recording ? '结束' : '🎤'}
+          </button>
+        )}
       </form>
     </div>
   )
@@ -273,6 +333,14 @@ function Bubble({
       <div className={mine ? 'bubble mine' : 'bubble theirs'}>
         {message.image_url && (
           <img className="bubble-image" src={message.image_url} alt="" loading="lazy" />
+        )}
+        {/* 用浏览器自带的播放器：它认得 m4a、webm、wav，
+            以后不管 iOS 那边发什么格式过来都能直接播 */}
+        {message.audio_url && (
+          <span className="voice">
+            <audio controls preload="metadata" src={message.audio_url} />
+            <span className="stamp">{formatSeconds(message.audio_seconds ?? 0)}</span>
+          </span>
         )}
         {message.body && <span>{message.body}</span>}
       </div>

@@ -299,3 +299,9 @@ input:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
   object-fit: cover;
 }
 .bubble .bubble-image + span { display: block; margin-top: 6px; }
+
+/* 语音 */
+.voice { display: flex; align-items: center; gap: 8px; }
+.voice audio { height: 34px; max-width: 200px; }
+.bubble.mine .voice .stamp { color: rgba(255, 255, 255, 0.8); }
+.btn.danger { background: var(--danger); color: #fff; }
