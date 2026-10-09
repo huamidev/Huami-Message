@@ -26,6 +26,16 @@ create index if not exists messages_conversation_recent
     on public.messages (conversation_id, created_at desc)
     where conversation_id is not null;
 
+-- ⚠️ 老表里 recipient_id 是 NOT NULL 的（建表时写的）。
+--    而群消息的 recipient_id 必须是空的 —— 不放开这一条，群消息根本插不进去。
+--
+--    这是我写这段 SQL 时没去查老表定义、想当然以为它是可空的。
+--    放开 NOT NULL **不会碰任何数据**（约束和列本身是两回事），
+--    而且下面那条 messages_has_target 约束正好补上了"总得有个去处"这个保证：
+--    recipient_id 空可以，但那样 conversation_id 必须有值。
+alter table public.messages
+    alter column recipient_id drop not null;
+
 -- 一条消息不能既是私聊又是群聊。用约束把这件事钉死，
 -- 免得以后某处写错了两边都填上，出现"一条消息属于两个地方"的怪状态。
 alter table public.messages
