@@ -55,11 +55,12 @@ struct Huami_MessageApp: App {
         AppLog.info(.data, "② 取 mainContext：\(Stopwatch.format(contextMs))")
 
         let watchRemote = Stopwatch()
-        let remote = AppServices.makeChatService()
-        AppLog.info(.data, "③ 建网络客户端：\(Stopwatch.format(watchRemote.milliseconds))")
+        // 网络客户端**不在这里建了** —— 它改成 lazy，第一次用到时才建
+        //（也就是第一帧之后的 start() 里）。那 249 毫秒从启动路径上下来了。
+        AppLog.info(.data, "③ 建网络客户端：已改为懒建（不在启动路径上）")
 
         let watchStore = Stopwatch()
-        store = ChatStore(local: SwiftDataLocalStore(context: context), remote: remote)
+        store = ChatStore(local: SwiftDataLocalStore(context: context))
         AppLog.info(.data, "④ 建数据管家：\(Stopwatch.format(watchStore.milliseconds))")
 
         AppLog.info(.data, "启动准备合计 \(Stopwatch.format(watchContainer.milliseconds + contextMs + watchRemote.milliseconds + watchStore.milliseconds))（全部在主线程上）")

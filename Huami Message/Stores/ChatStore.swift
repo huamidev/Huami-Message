@@ -54,17 +54,44 @@ final class ChatStore {
     // MARK: - 两个下属
 
     private let local: LocalStore
-    private let remote: ChatService
+    /// 网络层。
+    ///
+    /// ⚠️ **lazy：不在 App 启动时建。**
+    ///
+    /// 实测建它要 **249 毫秒**，是启动路径上的第二大头（第一是建库 367 毫秒）。
+    /// 而它和线程无关（就是读配置 + 一个 URLSession），所以可以安全地
+    /// 推迟到**第一次真正用到的时候** —— 那已经是第一帧之后了。
+    ///
+    /// （建库那一步不行：ModelContainer 换线程会崩，见 Huami_MessageApp 的注释。
+    ///  所以这一轮只挪这一样，挪完立刻真机跑一遍。）
+    // ⚠️ @ObservationIgnored 是必须的：
+    //    这个类是 @Observable，宏会为每个属性生成观察代码，
+    //    而观察代码不允许 lazy，也不允许初始化器里引用别的属性。
+    //    标上 @ObservationIgnored 之后它就是普通存储属性，lazy 才能用。
+    //    （它本来也不需要在界面上被观察 —— 它是个依赖，不是状态。）
+    @ObservationIgnored private var injectedRemote: ChatService?
+    @ObservationIgnored private lazy var remote: ChatService =
+        injectedRemote ?? AppServices.makeChatService()
 
     private var listenTask: Task<Void, Never>?
 
-    init(local: LocalStore, remote: ChatService = AppServices.makeChatService()) {
+    init(local: LocalStore, remote: ChatService? = nil) {
         self.local = local
-        self.remote = remote
+        self.injectedRemote = remote
     }
 
     /// 当前用的是不是假数据（界面据此显示「演示数据」标识）
-    var isDemoData: Bool { remote.isDemoData }
+    /// 当前是不是演示数据。
+    ///
+    /// ⚠️ **这里不能写 `remote.isDemoData`。**
+    ///
+    /// 会话列表的 body 第一帧就会读它（决定要不要显示"演示数据"标识）。
+    /// 一旦它去碰 remote，就会把那个 lazy 客户端提前建出来 ——
+    /// 249 毫秒又回到启动路径上了，白挪。
+    ///
+    /// 判据是"有没有配服务器"，那是个静态的配置问题，
+    /// AppServices.isConfigured 直接看配置，不建任何东西。
+    var isDemoData: Bool { !AppServices.isConfigured }
 
     // MARK: - 读
 
