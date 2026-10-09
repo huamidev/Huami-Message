@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { loadConversations } from '../lib/api'
 import type { Conversation } from '../lib/types'
 import Avatar from '../components/Avatar'
+import Chat from './Chat'
 
 /// 会话列表 —— 打开 App 看到的第一屏。
 ///
@@ -17,6 +18,9 @@ export default function Home({ session }: { session: Session }) {
   const myID = session.user.id
   const [conversations, setConversations] = useState<Conversation[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /// 打开了哪段会话。用状态切页面，先不引路由库 ——
+  /// 网页版只有这一层跳转，引一个路由库是多余的负担。
+  const [opened, setOpened] = useState<Conversation | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -45,6 +49,10 @@ export default function Home({ session }: { session: Session }) {
     }
   }, [reload])
 
+  if (opened) {
+    return <Chat session={session} conversation={opened} onBack={() => setOpened(null)} />
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -69,7 +77,7 @@ export default function Home({ session }: { session: Session }) {
       <ul className="conv-list">
         {conversations?.map((c) => (
           <li key={c.id}>
-            <button className="conv" onClick={() => alert('聊天界面是下一个里程碑')}>
+            <button className="conv" onClick={() => setOpened(c)}>
               <Avatar name={c.name} seed={c.avatarSeed} url={c.avatarURL} />
               <div className="conv-main">
                 <div className="conv-line">

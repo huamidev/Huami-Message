@@ -169,6 +169,18 @@ export async function sendMessage(params: {
   body: string
 }): Promise<Message> {
   const row = {
+    // ⚠️ **id 必须客户端生成。**
+    //
+    // 这一列在数据库里**没有默认值**（iOS 版一直是自己生成 UUID 的，
+    // 所以从来没暴露）。不写的话服务器直接拒收：
+    //
+    //     null value in column "id" of relation "messages"
+    //     violates not-null constraint
+    //
+    // 而且自己生成还有个好处：**画到界面上的那条和存进服务器的
+    // 就是同一个 id**，服务器实时推回来的时候一比对就知道是同一条，
+    // 不用靠"内容相同"去猜。
+    id: crypto.randomUUID(),
     sender_id: params.myID,
     recipient_id: params.isGroup ? null : params.conversationID,
     conversation_id: params.isGroup ? params.conversationID : null,
