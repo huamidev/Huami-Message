@@ -127,6 +127,51 @@ if (await lastMine.count()) {
 // 放到群资料之后的话，那一步结束时已经退回列表了，
 // 页面上根本没有 .chat-topbar —— 找不到不是「没有这个功能」，
 // 是「看错地方了」。这个错今天犯了两次。
+// ④a3 图片点开看大图
+const img = page.locator('.bubble-image').first()
+if (await img.count()) {
+  await img.scrollIntoViewIfNeeded()
+  await img.click()
+  await page.waitForTimeout(900)
+  const boxOpen = await page.locator('.lightbox').count()
+  await shot('4f-看大图')
+  if (boxOpen) await page.locator('.lightbox').click()
+  await page.waitForTimeout(600)
+  console.log('④a3 点图片看大图:', boxOpen ? '✓ 打开了，点一下关掉也正常' : '✗ 没打开')
+} else {
+  console.log('④a3 看大图：这段会话里没有图片，测不到')
+}
+
+// ④a4 删除单条（只在我这边删）
+//
+// 注意：这里删的是**测试浏览器里那份**。hideMessage 只写 localStorage，
+// 服务器上那条一点都不动 —— 所以对用户的真实聊天没有任何影响。
+const beforeDelete = await page.locator('.bubble, .recalled').count()
+const target = page.locator('.bubble').last()
+if (beforeDelete > 3 && await target.count()) {
+  await target.click({ button: 'right' })
+  await page.waitForTimeout(900)
+  const delBtn = page.locator('.sheet button:has-text("删除（只在你这儿删掉）")')
+  if (await delBtn.count()) {
+    await delBtn.click()
+    await page.waitForTimeout(1200)
+    const afterDelete = await page.locator('.bubble, .recalled').count()
+    // 刷新一下，验证"删掉的就是删掉了"（不是只是这一帧没画）
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.waitForTimeout(4000)
+    // 刷新之后回到列表了，重新进这个会话
+    await page.locator('.conv').first().click()
+    await page.waitForTimeout(3000)
+    const afterReload = await page.locator('.bubble, .recalled').count()
+    console.log('④a4 删除单条:', beforeDelete, '→', afterDelete, '→ 刷新后', afterReload,
+                (afterDelete === beforeDelete - 1 && afterReload === afterDelete)
+                  ? '✓ 删掉了，而且刷新后仍然是删掉的状态' : '✗ 数量不对')
+    await shot('4g-删除后')
+  } else {
+    console.log('④a4 删除单条：✗ 菜单里没有「删除」')
+  }
+}
+
 // ④a2 ⋯ 菜单里该有的东西（一对一：小助手 / 拉黑 / 删除好友）
 await page.locator('.chat-topbar .icon-btn').last().click()
 await page.waitForTimeout(900)

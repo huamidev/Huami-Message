@@ -44,3 +44,47 @@ export function countUnread(
     (m) => m.sender_id !== userID && new Date(m.created_at).getTime() > since,
   ).length
 }
+
+// ── "我不想要这条" ─────────────────────────────────────────────────────
+
+/// 删掉一条消息（**只在我这边**）。
+///
+/// 【为什么是本地隐藏，不是真删】
+///
+/// 数据库那份消息**两个人都能看到**。真删掉的话，对方手机上那条会凭空消失 ——
+/// 他会以为自己记错了。聊天记录之所以有用，前提是它不会被单方面改写。
+/// （撤回是另一回事：那是**双方都看到一条"已撤回"**，谁也没被瞒着。）
+///
+/// 所以这里只把 id 记下来，界面上不再显示。对方那边什么都不变。
+///
+/// ⚠️ 按账号分开存 —— 和已读那套一样。共用 key 会让两个账号互相影响。
+const HIDE_PREFIX = 'huami.hidden'
+
+function hideKey(userID: string): string {
+  return `${HIDE_PREFIX}.${userID}`
+}
+
+function hiddenSet(userID: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(hideKey(userID))
+    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+export function hideMessage(userID: string, messageID: string): void {
+  const set = hiddenSet(userID)
+  set.add(messageID)
+  localStorage.setItem(hideKey(userID), JSON.stringify([...set]))
+}
+
+export function isHidden(userID: string, messageID: string): boolean {
+  return hiddenSet(userID).has(messageID)
+}
+
+/// 过滤掉我删过的那些。
+export function withoutHidden<T extends { id: string }>(userID: string, items: T[]): T[] {
+  const set = hiddenSet(userID)
+  return set.size ? items.filter((m) => !set.has(m.id)) : items
+}

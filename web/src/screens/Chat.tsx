@@ -7,7 +7,7 @@ import {
   recallMessage, removeFriend, setBlocked,
 } from '../lib/api'
 import { startRecording, formatSeconds } from '../lib/audio'
-import { markRead } from '../lib/readState'
+import { markRead, hideMessage, withoutHidden } from '../lib/readState'
 import PolishSheet from '../components/PolishSheet'
 import GroupInfo from './GroupInfo'
 import AssistantSheet from '../components/AssistantSheet'
@@ -56,6 +56,8 @@ export default function Chat({
   const [showMenu, setShowMenu] = useState(false)
   const [showAssistant, setShowAssistant] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  /// 点开的图片（看大图）
+  const [zoomed, setZoomed] = useState<string | null>(null)
   const [blocked, setBlockedState] = useState(false)
   const recorderRef = useRef<ReturnType<typeof startRecording> | null>(null)
 
@@ -71,7 +73,9 @@ export default function Chat({
     let cancelled = false
     loadMessages(myID, conversation.id, isGroup)
       .then((list) => {
-        if (!cancelled) setMessages(list)
+        // 过滤掉我删过的那些 —— 它们还在服务器上（对方也还看得到），
+        // 只是不在我这边显示
+        if (!cancelled) setMessages(withoutHidden(myID, list))
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
     return () => {
@@ -288,6 +292,12 @@ export default function Chat({
 
   return (
     <div className="chat">
+      {zoomed && (
+        <div className="lightbox" onClick={() => setZoomed(null)}>
+          <img src={zoomed} alt="" />
+        </div>
+      )}
+
       {actionFor && (
         <div className="sheet-backdrop" onClick={() => setActionFor(null)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -300,6 +310,15 @@ export default function Chat({
                 只能撤回两分钟内、自己发的消息。
               </p>
             )}
+            <button className="btn ghost" style={{ color: 'var(--danger)' }} onClick={() => {
+              const id = actionFor.id
+              setActionFor(null)
+              // 只在我这边删 —— 对方那边什么都不变
+              hideMessage(myID, id)
+              setMessages((prev) => prev.filter((m) => m.id !== id))
+            }}>
+              删除（只在你这儿删掉）
+            </button>
             <button className="btn ghost" onClick={() => setActionFor(null)}>取消</button>
           </div>
         </div>
@@ -405,6 +424,7 @@ export default function Chat({
             mine={m.sender_id === myID}
             conversation={conversation}
             onLongPress={() => setActionFor(m)}
+            onZoom={setZoomed}
           />
         ))}
       </div>
@@ -474,11 +494,13 @@ function Bubble({
   mine,
   conversation,
   onLongPress,
+  onZoom,
 }: {
   message: Message
   mine: boolean
   conversation: Conversation
   onLongPress: () => void
+  onZoom: (url: string) => void
 }) {
   if (message.recalled_at) {
     return (
@@ -505,7 +527,15 @@ function Bubble({
       {mine && <span className="stamp">{time}</span>}
       <div className={mine ? 'bubble mine' : 'bubble theirs'}>
         {message.image_url && (
-          <img className="bubble-image" src={message.image_url} alt="" loading="lazy" />
+          <img
+            className="bubble-image"
+            src={message.image_url}
+            alt=""
+            loading="lazy"
+            /* 点开看大图。聊天里那张缩略图最大只有 300 高，
+               看不清的内容（截图里的小字）必须能放大看。 */
+            onClick={() => onZoom(message.image_url!)}
+          />
         )}
         {/* 用浏览器自带的播放器：它认得 m4a、webm、wav，
             以后不管 iOS 那边发什么格式过来都能直接播 */}
