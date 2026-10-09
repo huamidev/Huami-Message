@@ -32,6 +32,10 @@ protocol ChatService {
     /// 拉取和某个好友的历史消息
     func loadMessages(with friendID: Friend.ID, isGroup: Bool) async throws -> [Message]
 
+    /// 建一个群。返回新群的 id（也就是它的"会话 id"）。
+    /// 服务器那边一次做完：建对话 + 把我设成群主 + 把这些人拉进来。
+    func createGroup(title: String, usernames: [String]) async throws -> UUID
+
     /// 把一条消息发出去。
     /// 参数是已经组装好的 Message，返回服务器「确认收到」后的版本
     /// （真后端会在这里补上服务器生成的时间和编号）。

@@ -565,6 +565,17 @@ final class ChatStore {
     ///
     /// 出错时**抛出去**而不是自己吞掉 —— 界面要告诉用户
     /// "码不对"还是"已经是好友了"，这两种情况该说的话完全不一样。
+    /// 建一个群。
+    ///
+    /// 建完立刻刷新会话列表 —— 否则用户建完群，界面上什么都没有，
+    /// 会以为失败了再点一次（然后建出两个群）。
+    @discardableResult
+    func createGroup(title: String, usernames: [String]) async throws -> UUID {
+        let id = try await remote.createGroup(title: title, usernames: usernames)
+        await refreshFriends()
+        return id
+    }
+
     func addFriend(username: String) async throws {
         let friend = try await remote.addFriend(username: username)
         local.save(friend: friend)

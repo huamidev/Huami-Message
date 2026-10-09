@@ -50,6 +50,11 @@ final class MockChatService: ChatService {
         return list.sorted { $0.lastTime > $1.lastTime }
     }
 
+    func createGroup(title: String, usernames: [String]) async throws -> UUID {
+        // 示例模式没有服务器，编一个稳定的 id 出来让界面能跑
+        UUID()
+    }
+
     func loadMessages(with friendID: Friend.ID, isGroup: Bool) async throws -> [Message] {
         try await Task.sleep(for: latency)
         return messages[friendID] ?? []

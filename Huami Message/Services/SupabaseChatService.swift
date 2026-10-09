@@ -299,6 +299,37 @@ final class SupabaseChatService: ChatService {
     ///
     /// ⚠️ 群消息的 recipient_id 是空的，用配对过滤**一条都查不到** ——
     ///    不分开写的话，群聊点进去是一片空白，而且不报任何错。
+    /// 建群。
+    ///
+    /// 走服务器上的 create_group 函数，而不是客户端发三次请求 ——
+    /// 中间失败会留下一个**没有成员的对话**（谁也看不见、也删不掉），
+    /// 而且客户端可以跳过"创建者必须是群主"这一步。
+    ///
+    /// 函数返回的是新群的 id。它同时也是一段会话的 id ——
+    /// 本地模型里 friendID 就是"哪段对话"，两边是同一个值。
+    func createGroup(title: String, usernames: [String]) async throws -> UUID {
+        struct Body: Encodable {
+            let groupTitle: String
+            let memberUsernames: [String]
+        }
+        // 函数签名是 group_title / member_usernames，
+        // 编码器的 .convertToSnakeCase 会把上面两个属性转成那个样子。
+        let body = Body(groupTitle: title, memberUsernames: usernames)
+
+        // 服务器返回的是一段**裸 JSON 字符串**（`"a1b2..."` 这种），不是对象。
+        // String 本身就是 Decodable，直接让它解就行 ——
+        // 不需要去调客户端的私有方法手工处理字节。
+        let text: String = try await client.post(
+            "/rest/v1/rpc/create_group",
+            body: body,
+            as: String.self
+        )
+        guard let id = UUID(uuidString: text) else {
+            throw ChatError.unknown("建群返回的内容看不懂：\(text.prefix(120))")
+        }
+        return id
+    }
+
     func loadMessages(with friendID: Friend.ID, isGroup: Bool) async throws -> [Message] {
         guard let myID else { return [] }
         let me = myID.uuidString.lowercased()

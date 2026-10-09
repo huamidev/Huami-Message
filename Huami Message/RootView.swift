@@ -294,6 +294,16 @@ struct RootView: View {
 
             // 开发自检：自动加一个好友
             if !DevFlags.addFriendCode.isEmpty {
+            // 开发自检：建一个群（没有建群界面之前，用它在真机上打通链路）
+            // 参数形如 "测试群,huami888,test002"
+            if let spec = DevFlags.createGroup {
+                let parts = spec.split(separator: ",").map { String($0) }
+                if parts.count >= 2 {
+                    try? await store.createGroup(title: parts[0],
+                                                 usernames: Array(parts.dropFirst()))
+                }
+            }
+
                 try? await store.addFriend(username: DevFlags.addFriendCode)
             }
             // 开发自检：传一张自己画的测试头像

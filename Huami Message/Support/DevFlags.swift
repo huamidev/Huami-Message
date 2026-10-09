@@ -160,6 +160,12 @@ enum DevFlags {
         UserDefaults.standard.bool(forKey: "fakeRecording")
     }
 
+    /// 启动时建一个群（形如 `-createGroup 测试群,huami888`）。
+    /// 没有建群界面之前，用它在真机上打通整条链路。
+    static var createGroup: String? {
+        UserDefaults.standard.string(forKey: "createGroup")
+    }
+
     /// 启动时直接进语音模式（截图点不了麦克风按钮）
     static var voiceMode: Bool {
         UserDefaults.standard.bool(forKey: "voiceMode")
