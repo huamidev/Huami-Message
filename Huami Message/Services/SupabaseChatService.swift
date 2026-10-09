@@ -351,11 +351,16 @@ final class SupabaseChatService: ChatService {
     /// 和好友列表同一个套路：**两步、两次请求**，而不是一个人一次 ——
     /// 群里 30 个人就是 30 次请求，列表一滚动就会转圈。
     func loadMembers(of conversationID: UUID) async throws -> [GroupMember] {
-        struct MemberRow: Decodable { let userId: UUID }
+        // role 是 owner / member。界面要靠它标出"谁是群主"，
+        // 也靠它决定"改群名"这个按钮给不给我看。
+        struct MemberRow: Decodable {
+            let userId: UUID
+            let role: String
+        }
         let members: [MemberRow] = try await client.get(
             "/rest/v1/conversation_members",
             query: [
-                URLQueryItem(name: "select", value: "user_id"),
+                URLQueryItem(name: "select", value: "user_id,role"),
                 URLQueryItem(name: "conversation_id",
                              value: "eq.\(conversationID.uuidString.lowercased())"),
             ],
@@ -373,11 +378,17 @@ final class SupabaseChatService: ChatService {
             as: [ProfileRow].self
         )
 
+        // profiles 查出来的只有资料，role 在成员表那一份里 ——
+        // 拿 id 对一下拼起来（两次查询，不是每个成员查一次）
+        var roleByID: [UUID: String] = [:]
+        for member in members { roleByID[member.userId] = member.role }
+
         return profiles.map {
             GroupMember(id: $0.id,
                         name: $0.displayName,
                         avatarSeed: $0.avatarSeed,
-                        avatarURL: $0.avatarUrl.flatMap(URL.init(string:)))
+                        avatarURL: $0.avatarUrl.flatMap(URL.init(string:)),
+                        role: roleByID[$0.id] ?? "member")
         }
     }
 
@@ -402,6 +413,44 @@ final class SupabaseChatService: ChatService {
             throw ChatError.unknown("建群返回的内容看不懂：\(text.prefix(120))")
         }
         return id
+    }
+
+    /// 改群名。只有群主有权 —— 数据库那条 update 规则会拦下别人。
+    func renameGroup(id: UUID, title: String) async throws {
+        struct Body: Encodable { let title: String }
+        // 用 PATCH + id=eq.xxx，和拉黑好友是同一套写法
+        try await client.patch(
+            "/rest/v1/conversations",
+            query: [URLQueryItem(name: "id", value: "eq.\(id.uuidString.lowercased())")],
+            body: Body(title: title),
+            as: EmptyResponse.self
+        )
+    }
+
+    /// 往群里拉人。按**用户名**——服务器那边按 profiles.username 找。
+    func addGroupMembers(id: UUID, usernames: [String]) async throws {
+        struct Body: Encodable {
+            let targetGroup: UUID
+            let memberUsernames: [String]
+        }
+        // 函数签名是 target_group / member_usernames，
+        // 编码器的 .convertToSnakeCase 会转好。
+        let body = Body(targetGroup: id, memberUsernames: usernames)
+        let ok: Bool = try await client.post(
+            "/rest/v1/rpc/add_group_members", body: body, as: Bool.self
+        )
+        if !ok { throw ChatError.unknown("拉人没有成功，但没有报错信息") }
+    }
+
+    /// 退群。群主退不了 —— 服务器会明确拒绝并说明原因。
+    func leaveGroup(id: UUID) async throws {
+        struct Body: Encodable { let targetGroup: UUID }
+        let ok: Bool = try await client.post(
+            "/rest/v1/rpc/leave_group",
+            body: Body(targetGroup: id),
+            as: Bool.self
+        )
+        if !ok { throw ChatError.unknown("退群没有成功，但没有报错信息") }
     }
 
     func loadMessages(with friendID: Friend.ID, isGroup: Bool) async throws -> [Message] {

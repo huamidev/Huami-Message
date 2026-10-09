@@ -604,6 +604,38 @@ final class ChatStore {
         return id
     }
 
+    /// 当前账号的 id。界面用它判断"这条是不是我发的""群主是不是我"。
+    ///
+    /// 为什么不直接问 auth：本地库自己就知道现在是谁（ownerIDString），
+    /// 而且它和"数据按谁隔离"用的是同一个值 —— 用同一个来源，
+    /// 就不会出现"界面认为是我、数据认为不是"这种错位。
+    var myID: UUID? { UUID(uuidString: local.ownerIDString) }
+
+    /// 改群名。服务端只允许群主改，别人会被数据库规则拒掉。
+    func renameGroup(_ id: UUID, to title: String) async throws {
+        try await remote.renameGroup(id: id, title: title)
+        await refreshFriends()
+    }
+
+    /// 往群里拉人
+    func addMembers(to id: UUID, usernames: [String]) async throws {
+        try await remote.addGroupMembers(id: id, usernames: usernames)
+        // 成员缓存作废 —— 不然刚拉进来的人在界面上还是旧的
+        memberCache[id] = nil
+        _ = await members(of: id)
+    }
+
+    /// 退群。
+    ///
+    /// 退完之后**不用自己删本地记录**：refreshFriends 会拿到服务器上的
+    /// 会话列表，里面已经没有这个群了，dropFriendsMissingOnServer 会清掉它。
+    /// 这样"自己退"和"被别人踢"走的是同一条路，少一套逻辑。
+    func leaveGroup(_ id: UUID) async throws {
+        try await remote.leaveGroup(id: id)
+        memberCache[id] = nil
+        await refreshFriends()
+    }
+
     func addFriend(username: String) async throws {
         let friend = try await remote.addFriend(username: username)
         local.save(friend: friend)

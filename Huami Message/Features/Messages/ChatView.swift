@@ -35,6 +35,7 @@ struct ChatView: View {
     @State private var polishRequest: PolishRequest?
 
     @State private var showReportSheet = false
+    @State private var showGroupInfo = false
     @State private var showClearConfirm = false
 
     /// 每条消息对应的判断结果。key 是那条消息的 id。
@@ -409,6 +410,14 @@ struct ChatView: View {
         .safeAreaInset(edge: .top) {
             if isBlocked { blockedBanner }
         }
+        .sheet(isPresented: $showGroupInfo) {
+            GroupInfoView(conversation: conversation) {
+                // 退群之后把聊天页也关掉 ——
+                // 不然用户还停在一个自己已经不在的群里继续发消息
+                dismiss()
+            }
+            .environment(store)
+        }
         .sheet(item: $polishRequest) { request in
             PolishSheet(original: request.original) { picked, style in
                 // 选中的版本只是**填回输入框**，不会自动发出去。
@@ -521,6 +530,16 @@ struct ChatView: View {
 
     private var manageMenu: some View {
         Menu {
+            if conversation.friend.kind == .group {
+                Button {
+                    Haptics.tap()
+                    showGroupInfo = true
+                } label: {
+                    Label("群聊信息", systemImage: "person.3")
+                }
+                Divider()
+            }
+
             Button {
                 Haptics.tap()
                 analyzeLatest()

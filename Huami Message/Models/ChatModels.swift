@@ -94,6 +94,12 @@ struct GroupMember: Identifiable, Hashable {
     let avatarSeed: Int
     let avatarURL: URL?
 
+    /// owner / member。界面靠它标出群主，也靠它决定
+    /// "改群名"这个入口给不给我看。
+    var role: String = "member"
+
+    var isOwner: Bool { role == "owner" }
+
     var initial: String { String(name.prefix(1)) }
 }
 

@@ -36,6 +36,15 @@ protocol ChatService {
     /// 服务器那边一次做完：建对话 + 把我设成群主 + 把这些人拉进来。
     func createGroup(title: String, usernames: [String]) async throws -> UUID
 
+    /// 改群名。只有群主能改（服务端的规则说了算）。
+    func renameGroup(id: UUID, title: String) async throws
+
+    /// 往群里拉人（按用户名）
+    func addGroupMembers(id: UUID, usernames: [String]) async throws
+
+    /// 退群。群主退不了，服务端会明确拒绝。
+    func leaveGroup(id: UUID) async throws
+
     /// 拉一个群的成员。气泡上要显示"这条是谁发的"，就靠它。
     func loadMembers(of conversationID: UUID) async throws -> [GroupMember]
 
@@ -119,4 +128,20 @@ enum ChatError: LocalizedError, Equatable {
             message
         }
     }
+}
+
+extension ChatService {
+    /// 默认实现：什么也不做。
+    ///
+    /// 【为什么给默认实现】
+    ///
+    /// 演示用的 MockChatService 不该被迫实现"改群名"这种事 ——
+    /// 那里的群是假数据，改了也没有意义。给它一个空实现，
+    /// 它就能继续工作，而真实现只有 SupabaseChatService 一份。
+    ///
+    /// 代价是"忘了实现"不会编译报错。所以这两个方法只在
+    /// 群资料页里调用 —— 那一页在 Mock 数据下本来就进不去。
+    func renameGroup(id: UUID, title: String) async throws {}
+    func addGroupMembers(id: UUID, usernames: [String]) async throws {}
+    func leaveGroup(id: UUID) async throws {}
 }
