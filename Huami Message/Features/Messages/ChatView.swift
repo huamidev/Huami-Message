@@ -136,6 +136,50 @@ struct ChatView: View {
     /// 拉黑状态直接问 store，而不是读 conversation 里那份可能过期的副本
     private var isBlocked: Bool { store.isBlocked(conversation.friend.id) }
 
+    /// 一条消息的气泡。
+    ///
+    /// 【为什么要单独提出来】
+    ///
+    /// 直接写在 body 里的话，那个视图表达式会大到让编译器超时
+    /// （报错原文：unable to type-check this expression in reasonable time）。
+    /// 把带闭包的那几个参数挪进一个独立函数，编译器就有了明确的类型边界。
+    @ViewBuilder
+    private func bubble(for message: Message) -> some View {
+        MessageBubble(
+            message: message,
+            sender: senderInfo(for: message),
+            onRetry: { Task { await store.retry(message) } },
+            onDelete: {
+                Haptics.warning()
+                withAnimation(.snappy) { store.deleteMessage(message) }
+            }
+        )
+    }
+
+    /// 这条消息是谁发的。一对一返回 nil（那种情况不需要标名字）。
+    private func senderInfo(for message: Message) -> GroupMember? {
+        guard let id = message.senderID else { return nil }
+        return memberByID[id]
+    }
+
+    /// 成员表：发消息的人 → 他是谁。群聊里标名字用。
+    ///
+    /// 从 store 的缓存现算 —— 缓存是"每段会话一次请求"，
+    /// 而这个是每帧都要读的，不能在里面发请求。
+    private var memberByID: [UUID: GroupMember] {
+        guard conversation.friend.kind == .group else { return [:] }
+        // ⚠️ 不用 Dictionary(uniqueKeysWithValues:) —— 两个原因：
+        //   1. 它遇到重复 key 会**直接崩**（服务端数据万一重复，这里就是闪退）
+        //   2. 那个表达式复杂到让 Swift 编译器超时
+        //     （报错原文：unable to type-check this expression in reasonable time）
+        // 老老实实写个循环，两个问题一起消掉。
+        var map: [UUID: GroupMember] = [:]
+        for member in store.cachedMembers(of: conversation.friend.id) {
+            map[member.id] = member
+        }
+        return map
+    }
+
     var body: some View {
         // ScrollViewReader 包住整个页面（而不是只包消息列表），
         // 是为了让**底部的「回到最新」按钮也能命令列表滚动** ——
@@ -294,6 +338,16 @@ struct ChatView: View {
         // ⚠️ 这个修饰符必须挂在**占住屏幕底部的那一整层**上（这一页），
         //    挂在输入栏内部不生效 —— 我先挂在里面试过。
         .defersSystemGestures(on: .bottom)
+        // 群聊先把成员拉一次 —— 气泡上标「谁发的」靠的就是这份缓存。
+        //
+        // 为什么用 .task 而不是在视图里现取：缓存是"每段会话一次请求"，
+        // 而气泡是**每帧都要读**的，绝不能在渲染路径里发请求。
+        // 绑定 id 是为了换会话时重新拉一次。
+        .task(id: conversation.friend.id) {
+            if conversation.friend.kind == .group {
+                _ = await store.members(of: conversation.friend.id)
+            }
+        }
         .navigationTitle(conversation.friend.displayName)
         .navigationBarTitleDisplayMode(.inline)
         // 导航栏也做成毛玻璃 —— 消息从它下面滚过去时，
@@ -664,14 +718,7 @@ struct ChatView: View {
 
                     case .message(let message):
                         VStack(alignment: .leading, spacing: 8) {
-                            MessageBubble(
-                                message: message,
-                                onRetry: { Task { await store.retry(message) } },
-                                onDelete: {
-                                    Haptics.warning()
-                                    withAnimation(.snappy) { store.deleteMessage(message) }
-                                }
-                            )
+                            bubble(for: message)
 
                             // 判断贴在**它读的那条消息**下面 ——
                             // 这样往上翻历史时，每张卡片都还知道自己说的是哪句话。

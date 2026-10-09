@@ -36,6 +36,9 @@ protocol ChatService {
     /// 服务器那边一次做完：建对话 + 把我设成群主 + 把这些人拉进来。
     func createGroup(title: String, usernames: [String]) async throws -> UUID
 
+    /// 拉一个群的成员。气泡上要显示"这条是谁发的"，就靠它。
+    func loadMembers(of conversationID: UUID) async throws -> [GroupMember]
+
     /// 把一条消息发出去。
     /// 参数是已经组装好的 Message，返回服务器「确认收到」后的版本
     /// （真后端会在这里补上服务器生成的时间和编号）。

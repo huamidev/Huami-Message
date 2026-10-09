@@ -134,6 +134,11 @@ final class StoredMessage {
     var audioURLString: String?
     var audioSeconds: Double?
 
+    /// 发送者的用户 ID（存字符串，理由同 ownerIDString ——
+    /// SwiftData 的 #Predicate 对可选 UUID 比较有坑，字符串永远可靠）。
+    /// 群聊里用它去查"这条是谁发的"。
+    var senderIDString: String?
+
     /// 是不是我发的。
     /// 数据库里存 Bool 而不是存 enum，是为了简单可靠 —— 只有两种情况。
     var isMine: Bool
@@ -157,6 +162,7 @@ final class StoredMessage {
         imageURLString: String?,
         audioURLString: String? = nil,
         audioSeconds: Double? = nil,
+        senderIDString: String? = nil,
         isMine: Bool,
         sentAt: Date,
         polishedStyle: String?,
@@ -195,6 +201,7 @@ final class StoredMessage {
         self.imageURLString = message.imageURL?.absoluteString
         self.audioURLString = message.audioURL?.absoluteString
         self.audioSeconds = message.audioSeconds
+        self.senderIDString = message.senderID?.uuidString
         self.sentAt = message.sentAt
         self.polishedStyle = message.polishedWith?.rawValue
     }
@@ -222,6 +229,7 @@ final class StoredMessage {
             imageURL: imageURLString.flatMap(URL.init(string:)),
             audioURL: audioURLString.flatMap(URL.init(string:)),
             audioSeconds: audioSeconds,
+            senderID: senderIDString.flatMap(UUID.init(uuidString:)),
             sender: isMine ? .me : .friend,
             sentAt: sentAt,
             polishedWith: polishedStyle.flatMap(PolishStyle.init(rawValue:)),

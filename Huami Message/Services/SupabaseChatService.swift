@@ -307,6 +307,41 @@ final class SupabaseChatService: ChatService {
     ///
     /// 函数返回的是新群的 id。它同时也是一段会话的 id ——
     /// 本地模型里 friendID 就是"哪段对话"，两边是同一个值。
+    /// 拉一个群的成员。
+    ///
+    /// 和好友列表同一个套路：**两步、两次请求**，而不是一个人一次 ——
+    /// 群里 30 个人就是 30 次请求，列表一滚动就会转圈。
+    func loadMembers(of conversationID: UUID) async throws -> [GroupMember] {
+        struct MemberRow: Decodable { let userId: UUID }
+        let members: [MemberRow] = try await client.get(
+            "/rest/v1/conversation_members",
+            query: [
+                URLQueryItem(name: "select", value: "user_id"),
+                URLQueryItem(name: "conversation_id",
+                             value: "eq.\(conversationID.uuidString.lowercased())"),
+            ],
+            as: [MemberRow].self
+        )
+        guard !members.isEmpty else { return [] }
+
+        let ids = members.map { $0.userId.uuidString.lowercased() }.joined(separator: ",")
+        let profiles: [ProfileRow] = try await client.get(
+            "/rest/v1/profiles",
+            query: [
+                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "id", value: "in.(\(ids))"),
+            ],
+            as: [ProfileRow].self
+        )
+
+        return profiles.map {
+            GroupMember(id: $0.id,
+                        name: $0.displayName,
+                        avatarSeed: $0.avatarSeed,
+                        avatarURL: $0.avatarUrl.flatMap(URL.init(string:)))
+        }
+    }
+
     func createGroup(title: String, usernames: [String]) async throws -> UUID {
         struct Body: Encodable {
             let groupTitle: String
@@ -568,6 +603,7 @@ struct MessageRow: Decodable {
             imageURL: imageUrl.flatMap(URL.init(string:)),
             audioURL: audioUrl.flatMap(URL.init(string:)),
             audioSeconds: audioSeconds,
+            senderID: senderId,
             sender: mine ? .me : .friend,
             sentAt: createdAt,
             polishedWith: polishedWith.flatMap(PolishStyle.init(rawValue:)),

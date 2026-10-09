@@ -565,6 +565,26 @@ final class ChatStore {
     ///
     /// 出错时**抛出去**而不是自己吞掉 —— 界面要告诉用户
     /// "码不对"还是"已经是好友了"，这两种情况该说的话完全不一样。
+    /// 群成员缓存：conversationID → 成员列表。
+    ///
+    /// 缓存而不是每次渲染都去请求 —— 气泡上的名字是**每一帧都要读**的，
+    /// 一次请求换一次渲染绝对是灾难。
+    private var memberCache: [UUID: [GroupMember]] = [:]
+
+    /// 拉（或取缓存里的）群成员。界面上按 conversationID 调。
+    func members(of conversationID: UUID) async -> [GroupMember] {
+        if let cached = memberCache[conversationID] { return cached }
+        let list = (try? await remote.loadMembers(of: conversationID)) ?? []
+        memberCache[conversationID] = list
+        return list
+    }
+
+    /// 同步取缓存 —— 渲染时用这个，拿不到就先不显示名字，
+    /// 页面自己负责在 .task 里先调一次 members(of:) 把缓存填上。
+    func cachedMembers(of conversationID: UUID) -> [GroupMember] {
+        memberCache[conversationID] ?? []
+    }
+
     /// 建一个群。
     ///
     /// 建完立刻刷新会话列表 —— 否则用户建完群，界面上什么都没有，

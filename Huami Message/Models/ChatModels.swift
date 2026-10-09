@@ -79,6 +79,24 @@ struct Report: Identifiable, Hashable {
 /// 注意这里存的是 avatarSeed（一个数字）而不是颜色。
 /// 原因：好友信息要从数据库和服务器来，颜色是存不进去的，但数字可以。
 /// 头像颜色由这个数字在界面上现算出来。
+/// 群成员。
+///
+/// 【为什么单独一个类型，而不是直接用 Friend】
+///
+/// Friend 是"一段会话"（会话列表里那些行）。群成员**不是会话** ——
+/// 它是群里的一个人，不参与会话列表、没有未读数、不能左滑删除。
+/// 混用会让"这段会话是什么"变得越来越含糊。
+///
+/// 这里只带气泡显示需要的东西：名字、头像。
+struct GroupMember: Identifiable, Hashable {
+    let id: UUID
+    let name: String
+    let avatarSeed: Int
+    let avatarURL: URL?
+
+    var initial: String { String(name.prefix(1)) }
+}
+
 /// 一段对话是「一对一」还是「群聊」。
 ///
 /// 【为什么给 Friend 加这个字段，而不是新造一个类型】
@@ -187,6 +205,18 @@ struct Message: Identifiable, Hashable {
     /// 和"文字是空的"没有区别，多一个可选值只会让每处都多一层解包。
     var imageURL: URL?
 
+    /// 发送者的用户 ID。
+    ///
+    /// 【为什么一对一也需要它】
+    ///
+    /// 一对一其实靠 `sender`（.me / .friend）就够了。
+    /// 但**群聊里"不是我就行"是不够的** —— 要知道具体是哪个人，
+    /// 才能在他头上显示名字和头像。
+    ///
+    /// 老数据没有这个字段（可选），那种情况下一对一的界面照常工作，
+    /// 群聊里会退化成"不显示名字"—— 而不是显示错误的名字。
+    var senderID: UUID? = nil
+
     /// 语音消息的音频地址。纯文字/图片消息是 nil。
     var audioURL: URL?
 
@@ -216,6 +246,7 @@ struct Message: Identifiable, Hashable {
         imageURL: URL? = nil,
         audioURL: URL? = nil,
         audioSeconds: Double? = nil,
+        senderID: UUID? = nil,
         sender: Sender,
         sentAt: Date = .now,
         polishedWith: PolishStyle? = nil,
@@ -227,6 +258,7 @@ struct Message: Identifiable, Hashable {
         self.imageURL = imageURL
         self.audioURL = audioURL
         self.audioSeconds = audioSeconds
+        self.senderID = senderID
         self.sender = sender
         self.sentAt = sentAt
         self.polishedWith = polishedWith
