@@ -42,7 +42,17 @@ struct MessageBubble: View {
     private var isMine: Bool { message.sender == .me }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 0) {
+        // ⚠️ **顶部对齐，不是底部对齐。**
+        //
+        // 微信的排法是「头像和昵称在同一条水平线上」——
+        // 头像的顶边对齐昵称的顶边，然后气泡在下面展开。
+        //
+        // 用底部对齐的话，头像会掉到气泡底下，和昵称隔着一条气泡，
+        // 看着像两个不相关的东西（用户的原话："这太丑了"）。
+        //
+        // 但时间是**要贴底**的（和气泡底边齐平），
+        // 所以它单独用 alignmentGuide 把对齐基准从顶边改成底边。
+        HStack(alignment: .top, spacing: 0) {
             if isMine { Spacer(minLength: 56) }
 
             // ── 头像：放在气泡**旁边**（微信那样），不是上面 ──
@@ -61,7 +71,9 @@ struct MessageBubble: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 8)
-                .padding(.bottom, 2)      // 和气泡底部对齐，看着稳
+                // 昵称那一行本身有行高，头像顶边直接对齐容器顶边会显得偏高。
+                // 往下压一点点，视觉上和昵称在同一条线上。
+                .padding(.top, 2)
             }
 
             // ── 时间贴在内侧 ──
@@ -69,7 +81,11 @@ struct MessageBubble: View {
             // 我发的消息靠右，所以"内侧"是它的左边；
             // 对方发的靠左，内侧是它的右边。
             // 这样时间永远挨着对话中间，而不是贴着屏幕边缘。
-            if isMine { metaRow.padding(.trailing, 6) }
+            if isMine {
+                metaRow
+                    .alignmentGuide(.top) { $0[.bottom] }   // 按底边对齐
+                    .padding(.trailing, 6)
+            }
 
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
                 // 群聊里"别人发的"要标出是谁 —— 三个人说话时，
@@ -126,7 +142,11 @@ struct MessageBubble: View {
                 }
             }
 
-            if !isMine { metaRow.padding(.leading, 6) }
+            if !isMine {
+                metaRow
+                    .alignmentGuide(.top) { $0[.bottom] }   // 按底边对齐
+                    .padding(.leading, 6)
+            }
             if !isMine { Spacer(minLength: 56) }
         }
         .transition(
