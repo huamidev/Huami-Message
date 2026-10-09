@@ -105,6 +105,21 @@ struct MessageBubble: View {
                 // 两层各管各的，才不会互相牵扯 ——
                 // 我第一版把两件事塞进同一个 HStack，结果时间跑到气泡中间去了。
                 HStack(alignment: .bottom, spacing: 6) {
+                // ⚠️ **自己的时间要放在气泡前面（左边）。**
+                //
+                // 原来两行都写在气泡后面：
+                //     <气泡>
+                //     if isMine { metaRow }     ← 自己的跑到了右边
+                //     if !isMine { metaRow }
+                //
+                // 于是自己的时间出现在气泡右边，和对方那边一样 ——
+                // 而用户要的是**内侧**：自己的在左、对方的在右，
+                // 两边对称地把时间夹在中间。
+                //
+                // 我看过截图还以为是对的 —— 把"气泡右边的 13:03"
+                // 看成了"气泡左边的 13:03"。**截图要看仔细，
+                // 尤其是这种左右对称的东西。**
+                if isMine { metaRow }
                 if let imageURL = message.imageURL {
                     // 图片消息。
                     //
@@ -148,7 +163,6 @@ struct MessageBubble: View {
                         .opacity(message.status == .sending ? 0.72 : 1)
                 }
 
-                if isMine { metaRow }
                 if !isMine { metaRow }
                 }
             }
