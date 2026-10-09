@@ -93,7 +93,13 @@ if (await lastMine.count()) {
     console.log('④a 撤回：菜单有「撤回」✓，撤回后页面出现', recalled, '条撤回提示',
                 recalled > 0 ? '✓' : '✗（撤回没生效）')
   } else {
-    console.log('④a 撤回：✗ 菜单里没有「撤回」按钮')
+    // 没有「撤回」按钮是**正常**的：跳过发送测试时，最近一条自己的消息
+    // 早就超过两分钟了。但**必须把这个面板关掉** ——
+    // 它的遮罩会挡住后面所有的点击，表现成"后面的步骤全都超时"，
+    // 而真正的原因在这里。我第一次就栽在这儿。
+    console.log('④a 撤回：菜单里没有「撤回」（正常 —— 最近一条自己的消息已超过两分钟）')
+    await page.locator('.sheet button:has-text("取消")').click()
+    await page.waitForTimeout(600)
   }
 }
 
