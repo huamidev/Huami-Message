@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import Login from './screens/Login'
+import Home from './screens/Home'
 
 /// 整个网页的入口。
 ///
@@ -41,19 +42,5 @@ export default function App() {
     return <Login />
   }
 
-  return (
-    <div className="boot">
-      <div className="boot-card">
-        <div className="boot-avatar">
-          {(session.user.email ?? '?').slice(0, 1).toUpperCase()}
-        </div>
-        <h2>登录成功</h2>
-        <p className="muted">{session.user.email}</p>
-        <p className="muted small">会话列表是下一个里程碑</p>
-        <button className="btn ghost" onClick={() => supabase.auth.signOut()}>
-          退出登录
-        </button>
-      </div>
-    </div>
-  )
+  return <Home session={session} />
 }
