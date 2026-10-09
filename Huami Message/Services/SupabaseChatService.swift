@@ -73,7 +73,11 @@ final class SupabaseChatService: ChatService {
             as: [ProfileRow].self
         )
         }
-        let profileByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+        // ⚠️ 不用 Dictionary(uniqueKeysWithValues:) ——
+        //    它遇到重复 key 会**直接崩**。服务端数据万一有重复，
+        //    这里就是用户一打开 App 就闪退。循环写安全得多。
+        var profileByID: [UUID: ProfileRow] = [:]
+        for profile in profiles { profileByID[profile.id] = profile }
 
         // ③ 最近的消息，用来填"最后一条说了什么"。
         //    只取最近 200 条：会话列表每个会话只要最后一条，
@@ -117,7 +121,23 @@ final class SupabaseChatService: ChatService {
                 )
             }
         // ③ 我参与的群
-        let groups = try await loadGroups(myID: myID)
+        //
+        // ⚠️ **这里绝对不能写 `try await`。**
+        //
+        // 我第一版就是那么写的，结果群那边一出问题，
+        // **好友列表跟着整个空掉**、添加好友报"已是好友"、
+        // 消息也收不到 —— 因为 loadConversations 整个抛出去了。
+        //
+        // 群是新功能，好友是老的、每天都用的。
+        // **新功能出错不该让老功能也挂掉。** 拉不到群就当成没有群，
+        // 但一定要把原因打出来，不能静默。
+        var groups: [Conversation] = []
+        do {
+            groups = try await loadGroups(myID: myID)
+            AppLog.info(.data, "群聊：\(groups.count) 个")
+        } catch {
+            AppLog.error(.network, "拉群失败（好友列表不受影响）：\(describeLoadError(error))")
+        }
 
         return (direct + groups).sorted { $0.lastTime > $1.lastTime }
     }
@@ -307,6 +327,14 @@ final class SupabaseChatService: ChatService {
     ///
     /// 函数返回的是新群的 id。它同时也是一段会话的 id ——
     /// 本地模型里 friendID 就是"哪段对话"，两边是同一个值。
+    /// 把错误变成一句能看的话。日志里要能看出是哪一类问题。
+    private func describeLoadError(_ error: Error) -> String {
+        if let localized = error as? LocalizedError, let text = localized.errorDescription {
+            return text
+        }
+        return String(describing: error)
+    }
+
     /// 拉一个群的成员。
     ///
     /// 和好友列表同一个套路：**两步、两次请求**，而不是一个人一次 ——
