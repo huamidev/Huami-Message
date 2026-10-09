@@ -73,6 +73,7 @@ export async function loadConversations(myID: UUID): Promise<Conversation[]> {
       kind: 'direct' as const,
       title: null,
       name: p.display_name || p.username || '未命名',
+      username: p.username ?? undefined,
       avatarSeed: p.avatar_seed ?? 0,
       avatarURL: p.avatar_url,
       lastMessage: last ? preview(last) : '',
@@ -276,4 +277,48 @@ export async function respondToRequest(id: UUID, accept: boolean): Promise<void>
     accept,
   })
   if (error) throw error
+}
+
+// ── 群 ─────────────────────────────────────────────────────────────────
+
+/// 建一个群。
+///
+/// 参数是**用户名数组** —— 服务器按 profiles.username 找人。
+/// 找不到任何一个就整次回滚（服务器那边是这么写的），
+/// 所以要么全进来，要么一个都不进来，不会出现"少了几个人还没提示"。
+export async function createGroup(title: string, usernames: string[]): Promise<string> {
+  const { data, error } = await supabase.rpc('create_group', {
+    group_title: title,
+    member_usernames: usernames,
+  })
+  if (error) throw error
+  return data as string
+}
+
+/// 一个群里有哪些人。
+export async function loadGroupMembers(
+  conversationID: UUID,
+): Promise<{ id: UUID; name: string; avatarSeed: number; role: string }[]> {
+  const { data: members, error } = await supabase
+    .from('conversation_members')
+    .select('user_id, role')
+    .eq('conversation_id', conversationID)
+  if (error) throw error
+  if (!members?.length) return []
+
+  const ids = members.map((m) => m.user_id as UUID)
+  const { data: profiles, error: profileError } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('id', ids)
+  if (profileError) throw profileError
+
+  // role 在成员表那份里，资料在 profiles 那份里 —— 按 id 拼起来
+  const roleByID = new Map(members.map((m) => [m.user_id as UUID, m.role as string]))
+  return (profiles ?? []).map((p) => ({
+    id: p.id as UUID,
+    name: p.display_name || p.username || '某人',
+    avatarSeed: p.avatar_seed ?? 0,
+    role: roleByID.get(p.id as UUID) ?? 'member',
+  }))
 }

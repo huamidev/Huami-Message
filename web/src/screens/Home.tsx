@@ -5,6 +5,7 @@ import { loadConversations } from '../lib/api'
 import type { Conversation } from '../lib/types'
 import Avatar from '../components/Avatar'
 import Chat from './Chat'
+import CreateGroup from './CreateGroup'
 
 /// 会话列表 —— 打开 App 看到的第一屏。
 ///
@@ -21,6 +22,7 @@ export default function Home({ session }: { session: Session }) {
   /// 打开了哪段会话。用状态切页面，先不引路由库 ——
   /// 网页版只有这一层跳转，引一个路由库是多余的负担。
   const [opened, setOpened] = useState<Conversation | null>(null)
+  const [creatingGroup, setCreatingGroup] = useState(false)
 
   const reload = useCallback(async () => {
     try {
@@ -49,6 +51,16 @@ export default function Home({ session }: { session: Session }) {
     }
   }, [reload])
 
+  if (creatingGroup) {
+    return (
+      <CreateGroup
+        friends={conversations ?? []}
+        onBack={() => setCreatingGroup(false)}
+        onCreated={() => { setCreatingGroup(false); reload() }}
+      />
+    )
+  }
+
   if (opened) {
     return <Chat session={session} conversation={opened} onBack={() => setOpened(null)} />
   }
@@ -57,8 +69,8 @@ export default function Home({ session }: { session: Session }) {
     <div className="app">
       <header className="topbar">
         <h1>消息</h1>
-        <button className="icon-btn" onClick={() => supabase.auth.signOut()} title="退出登录">
-          ⏏
+        <button className="icon-btn" onClick={() => setCreatingGroup(true)} title="发起群聊">
+          ＋
         </button>
       </header>
 

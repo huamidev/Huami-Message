@@ -24,6 +24,13 @@ export interface Conversation {
   kind: 'direct' | 'group'
   title: string | null
   name: string
+  /// 对方的用户名（一对一才有）。
+  ///
+  /// ⚠️ **建群时必须用它，不能用 name。**
+  /// name 是给人看的昵称，服务器按 username 找人 ——
+  /// 拿昵称去查会报「找不到用户名：huami888」（那是昵称）。
+  /// iOS 版就是为这个才给 Friend 加了 username 字段。
+  username?: string
   avatarSeed: number
   avatarURL: string | null
   lastMessage: string
